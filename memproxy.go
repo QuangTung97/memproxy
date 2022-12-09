@@ -49,7 +49,7 @@ type LeaseGetStatus uint32
 
 const (
 	// LeaseGetStatusFound returns data
-	LeaseGetStatusFound = iota + 1
+	LeaseGetStatusFound LeaseGetStatus = iota + 1
 
 	// LeaseGetStatusLeaseGranted lease granted
 	LeaseGetStatusLeaseGranted
@@ -62,10 +62,12 @@ const (
 type LeaseGetResponse struct {
 	Status LeaseGetStatus
 	CAS    uint64
+	Data   []byte
 }
 
 // LeaseSetOptions lease set options
 type LeaseSetOptions struct {
+	TTL uint32
 }
 
 // LeaseSetResponse lease set response
