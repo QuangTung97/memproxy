@@ -1,11 +1,16 @@
 package memproxy
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+//go:generate moq -rm -out memproxy_mocks.go . Memcache Pipeline SessionProvider Session Filler
 
 // Memcache represents a generic Memcache interface
 type Memcache interface {
-	Pipeline() Pipeline
-	PipelineWithSession(sess Session) Pipeline
+	Pipeline(ctx context.Context) Pipeline
+	PipelineWithSession(ctx context.Context, sess Session) Pipeline
 }
 
 // Pipeline represents a generic Pipeline
@@ -48,7 +53,7 @@ type LeaseGetOptions struct {
 type LeaseGetStatus uint32
 
 const (
-	// LeaseGetStatusFound returns data
+	// LeaseGetStatusFound returns Data
 	LeaseGetStatusFound LeaseGetStatus = iota + 1
 
 	// LeaseGetStatusLeaseGranted lease granted
@@ -80,4 +85,14 @@ type DeleteOptions struct {
 
 // DeleteResponse delete response
 type DeleteResponse struct {
+}
+
+// FillResponse fill response
+type FillResponse struct {
+	Data []byte
+}
+
+// Filler for filling memcache contents
+type Filler interface {
+	Fill(ctx context.Context, key string) func() (FillResponse, error)
 }

@@ -1,6 +1,7 @@
 package memproxy
 
 import (
+	"context"
 	"github.com/QuangTung97/go-memcache/memcache"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -28,7 +29,7 @@ func newPlainMemcacheTest(t *testing.T) *plainMemcacheTest {
 	cache := NewPlainMemcache(client, 7)
 
 	return &plainMemcacheTest{
-		pipe: cache.PipelineWithSession(nil),
+		pipe: cache.PipelineWithSession(context.Background(), nil),
 	}
 }
 

@@ -1,7 +1,7 @@
 package memproxy
 
 import (
-	"errors"
+	"context"
 	"github.com/QuangTung97/go-memcache/memcache"
 )
 
@@ -19,9 +19,6 @@ type plainPipelineImpl struct {
 
 var _ Pipeline = &plainPipelineImpl{}
 
-// ErrInvalidLeaseGetResponse ...
-var ErrInvalidLeaseGetResponse = errors.New("invalid lease get response")
-
 func NewPlainMemcache(client *memcache.Client, leaseDuration uint32) Memcache {
 	return &plainMemcacheImpl{
 		client:        client,
@@ -30,7 +27,7 @@ func NewPlainMemcache(client *memcache.Client, leaseDuration uint32) Memcache {
 }
 
 // Pipeline ...
-func (m *plainMemcacheImpl) Pipeline() Pipeline {
+func (m *plainMemcacheImpl) Pipeline(_ context.Context) Pipeline {
 	return &plainPipelineImpl{
 		pipeline:      m.client.Pipeline(),
 		leaseDuration: m.leaseDuration,
@@ -38,8 +35,8 @@ func (m *plainMemcacheImpl) Pipeline() Pipeline {
 }
 
 // PipelineWithSession ...
-func (m *plainMemcacheImpl) PipelineWithSession(_ Session) Pipeline {
-	return m.Pipeline()
+func (m *plainMemcacheImpl) PipelineWithSession(ctx context.Context, _ Session) Pipeline {
+	return m.Pipeline(ctx)
 }
 
 // Get ...
@@ -61,7 +58,7 @@ func (p *plainPipelineImpl) Get(key string, _ GetOptions) func() (GetResponse, e
 }
 
 // LeaseGet ...
-func (p *plainPipelineImpl) LeaseGet(key string, options LeaseGetOptions) func() (LeaseGetResponse, error) {
+func (p *plainPipelineImpl) LeaseGet(key string, _ LeaseGetOptions) func() (LeaseGetResponse, error) {
 	fn := p.pipeline.MGet(key, memcache.MGetOptions{
 		N:   p.leaseDuration,
 		CAS: true,
