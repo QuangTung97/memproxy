@@ -75,10 +75,8 @@ func (p *fillerPipelineImpl) LeaseGet(key string, options LeaseGetOptions) func(
 		}
 
 		if resp.Status == LeaseGetStatusLeaseGranted {
-			fillFn := p.filler.Fill(p.ctx, key)
-			p.sess.AddNextCall(func() {
-				var fillResp FillResponse
-				fillResp, err = fillFn()
+			completeFn := func(fillResp FillResponse, fillErr error) {
+				err = fillErr
 				if err != nil {
 					return
 				}
@@ -90,7 +88,8 @@ func (p *fillerPipelineImpl) LeaseGet(key string, options LeaseGetOptions) func(
 					CAS:    0,
 					Data:   fillResp.Data,
 				}
-			})
+			}
+			p.filler.Fill(p.ctx, key, completeFn)
 			return
 		}
 

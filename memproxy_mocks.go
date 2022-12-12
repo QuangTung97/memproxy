@@ -148,7 +148,7 @@ var _ Pipeline = &PipelineMock{}
 // 			LeaseGetFunc: func(key string, options LeaseGetOptions) func() (LeaseGetResponse, error) {
 // 				panic("mock out the LeaseGet method")
 // 			},
-// 			LeaseSetFunc: func(key string, Data []byte, cas uint64, options LeaseSetOptions) func() (LeaseSetResponse, error) {
+// 			LeaseSetFunc: func(key string, data []byte, cas uint64, options LeaseSetOptions) func() (LeaseSetResponse, error) {
 // 				panic("mock out the LeaseSet method")
 // 			},
 // 		}
@@ -209,7 +209,7 @@ type PipelineMock struct {
 		LeaseSet []struct {
 			// Key is the key argument value.
 			Key string
-			// Data is the Data argument value.
+			// Data is the data argument value.
 			Data []byte
 			// Cas is the cas argument value.
 			Cas uint64
@@ -643,7 +643,7 @@ var _ Filler = &FillerMock{}
 //
 // 		// make and configure a mocked Filler
 // 		mockedFiller := &FillerMock{
-// 			FillFunc: func(ctx context.Context, key string) func() (FillResponse, error) {
+// 			FillFunc: func(ctx context.Context, key string, completeFn func(resp FillResponse, err error))  {
 // 				panic("mock out the Fill method")
 // 			},
 // 		}
@@ -654,7 +654,7 @@ var _ Filler = &FillerMock{}
 // 	}
 type FillerMock struct {
 	// FillFunc mocks the Fill method.
-	FillFunc func(ctx context.Context, key string) func() (FillResponse, error)
+	FillFunc func(ctx context.Context, key string, completeFn func(resp FillResponse, err error))
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -664,39 +664,45 @@ type FillerMock struct {
 			Ctx context.Context
 			// Key is the key argument value.
 			Key string
+			// CompleteFn is the completeFn argument value.
+			CompleteFn func(resp FillResponse, err error)
 		}
 	}
 	lockFill sync.RWMutex
 }
 
 // Fill calls FillFunc.
-func (mock *FillerMock) Fill(ctx context.Context, key string) func() (FillResponse, error) {
+func (mock *FillerMock) Fill(ctx context.Context, key string, completeFn func(resp FillResponse, err error)) {
 	if mock.FillFunc == nil {
 		panic("FillerMock.FillFunc: method is nil but Filler.Fill was just called")
 	}
 	callInfo := struct {
-		Ctx context.Context
-		Key string
+		Ctx        context.Context
+		Key        string
+		CompleteFn func(resp FillResponse, err error)
 	}{
-		Ctx: ctx,
-		Key: key,
+		Ctx:        ctx,
+		Key:        key,
+		CompleteFn: completeFn,
 	}
 	mock.lockFill.Lock()
 	mock.calls.Fill = append(mock.calls.Fill, callInfo)
 	mock.lockFill.Unlock()
-	return mock.FillFunc(ctx, key)
+	mock.FillFunc(ctx, key, completeFn)
 }
 
 // FillCalls gets all the calls that were made to Fill.
 // Check the length with:
 //     len(mockedFiller.FillCalls())
 func (mock *FillerMock) FillCalls() []struct {
-	Ctx context.Context
-	Key string
+	Ctx        context.Context
+	Key        string
+	CompleteFn func(resp FillResponse, err error)
 } {
 	var calls []struct {
-		Ctx context.Context
-		Key string
+		Ctx        context.Context
+		Key        string
+		CompleteFn func(resp FillResponse, err error)
 	}
 	mock.lockFill.RLock()
 	calls = mock.calls.Fill

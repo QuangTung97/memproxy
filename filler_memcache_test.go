@@ -97,10 +97,10 @@ func (m *fillerMemcacheTest) stubLeaseSet() {
 }
 
 func (m *fillerMemcacheTest) stubFill(respData []byte) {
-	m.filler.FillFunc = func(ctx context.Context, key string) func() (FillResponse, error) {
-		return func() (FillResponse, error) {
-			return FillResponse{Data: respData}, nil
-		}
+	m.filler.FillFunc = func(ctx context.Context, key string, completeFn func(resp FillResponse, err error)) {
+		m.sess.AddNextCall(func() {
+			completeFn(FillResponse{Data: respData}, nil)
+		})
 	}
 }
 

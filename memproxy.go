@@ -94,5 +94,5 @@ type FillResponse struct {
 
 // Filler for filling memcache contents
 type Filler interface {
-	Fill(ctx context.Context, key string) func() (FillResponse, error)
+	Fill(ctx context.Context, key string, completeFn func(resp FillResponse, err error))
 }
