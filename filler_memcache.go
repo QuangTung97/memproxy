@@ -78,6 +78,7 @@ func (p *fillerPipelineImpl) LeaseGet(key string, options LeaseGetOptions) func(
 			completeFn := func(fillResp FillResponse, fillErr error) {
 				err = fillErr
 				if err != nil {
+					resp = LeaseGetResponse{}
 					return
 				}
 

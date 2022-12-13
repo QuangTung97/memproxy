@@ -2,6 +2,7 @@ package memproxy
 
 import (
 	"context"
+	"errors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -96,10 +97,19 @@ func (m *fillerMemcacheTest) stubLeaseSet() {
 	}
 }
 
-func (m *fillerMemcacheTest) stubFill(respData []byte) {
+func (m *fillerMemcacheTest) stubFill(respData []byte, err error) {
 	m.filler.FillFunc = func(ctx context.Context, key string, completeFn func(resp FillResponse, err error)) {
 		m.sess.AddNextCall(func() {
-			completeFn(FillResponse{Data: respData}, nil)
+			completeFn(FillResponse{Data: respData}, err)
+		})
+	}
+}
+
+func (m *fillerMemcacheTest) stubFillMulti(respData ...[]byte) {
+	m.filler.FillFunc = func(ctx context.Context, key string, completeFn func(resp FillResponse, err error)) {
+		index := len(m.filler.FillCalls()) - 1
+		m.sess.AddNextCall(func() {
+			completeFn(FillResponse{Data: respData[index]}, nil)
 		})
 	}
 }
@@ -153,7 +163,7 @@ func TestFillerMemcache__Get_Granted__Call_Filler(t *testing.T) {
 		CAS:    33,
 	}, nil)
 
-	m.stubFill([]byte("test data"))
+	m.stubFill([]byte("test data"), nil)
 
 	m.stubLeaseSet()
 
@@ -238,4 +248,129 @@ func TestFillerMemcache__Get_Rejected__Until_Give_Up(t *testing.T) {
 	assert.Equal(t, 80*time.Millisecond, addCalls[2].D)
 	assert.Equal(t, 320*time.Millisecond, addCalls[3].D)
 	assert.Equal(t, 1280*time.Millisecond, addCalls[4].D)
+}
+
+func TestFillerMemcache__Get_Granted__Multi(t *testing.T) {
+	m := newFillerMemcacheTest()
+
+	const key1 = "KEY01"
+	const key2 = "KEY02"
+
+	const finish = "finish"
+
+	getResults := []leaseGetResult{
+		{
+			resp: LeaseGetResponse{
+				Status: LeaseGetStatusLeaseGranted,
+				CAS:    51,
+			},
+		},
+		{
+			resp: LeaseGetResponse{
+				Status: LeaseGetStatusLeaseGranted,
+				CAS:    52,
+			},
+		},
+	}
+	var getCalls []interface{}
+	m.originPipe.LeaseGetFunc = func(key string, options LeaseGetOptions) func() (LeaseGetResponse, error) {
+		getCalls = append(getCalls, key)
+		index := len(m.originPipe.LeaseGetCalls()) - 1
+		return func() (LeaseGetResponse, error) {
+			getCalls = append(getCalls, finish)
+			r := getResults[index]
+			return r.resp, r.err
+		}
+	}
+
+	m.stubFillMulti(
+		[]byte("response data 1"),
+		[]byte("response data 2"),
+	)
+
+	var setCalls []interface{}
+	m.originPipe.LeaseSetFunc = func(
+		key string, data []byte, cas uint64, options LeaseSetOptions,
+	) func() (LeaseSetResponse, error) {
+		setCalls = append(setCalls, key)
+		return func() (LeaseSetResponse, error) {
+			setCalls = append(setCalls, finish)
+			return LeaseSetResponse{}, nil
+		}
+	}
+
+	fn1 := m.pipe.LeaseGet(key1, LeaseGetOptions{})
+	fn2 := m.pipe.LeaseGet(key2, LeaseGetOptions{})
+
+	resp, err := fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, LeaseGetResponse{
+		Status: LeaseGetStatusFound,
+		Data:   []byte("response data 1"),
+	}, resp)
+
+	resp, err = fn2()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, LeaseGetResponse{
+		Status: LeaseGetStatusFound,
+		Data:   []byte("response data 2"),
+	}, resp)
+
+	assert.Equal(t, []interface{}{key1, key2, finish, finish}, getCalls)
+	assert.Equal(t, []interface{}{key1, key2}, setCalls)
+}
+
+func TestFillerMemcache__Get_Returns_Error(t *testing.T) {
+	m := newFillerMemcacheTest()
+
+	const key1 = "KEY01"
+
+	m.stubLeaseGet(LeaseGetResponse{}, errors.New("lease get error"))
+
+	resp, err := m.pipe.LeaseGet(key1, LeaseGetOptions{})()
+	assert.Equal(t, errors.New("lease get error"), err)
+	assert.Equal(t, LeaseGetResponse{}, resp)
+}
+
+func TestFillerMemcache__Get_Granted__Fill_Error(t *testing.T) {
+	m := newFillerMemcacheTest()
+
+	const key1 = "KEY01"
+
+	m.stubLeaseGet(LeaseGetResponse{
+		Status: LeaseGetStatusLeaseGranted,
+		CAS:    33,
+	}, nil)
+
+	m.stubFill(nil, errors.New("fill error"))
+
+	resp, err := m.pipe.LeaseGet(key1, LeaseGetOptions{})()
+	assert.Equal(t, errors.New("fill error"), err)
+	assert.Equal(t, LeaseGetResponse{}, resp)
+
+	setCalls := m.originPipe.LeaseSetCalls()
+	assert.Equal(t, 0, len(setCalls))
+}
+
+func TestFillerMemcache__LeaseSet(t *testing.T) {
+	m := newFillerMemcacheTest()
+
+	m.originPipe.LeaseSetFunc = func(
+		key string, data []byte, cas uint64, options LeaseSetOptions,
+	) func() (LeaseSetResponse, error) {
+		return func() (LeaseSetResponse, error) {
+			return LeaseSetResponse{}, nil
+		}
+	}
+
+	const key1 = "KEY01"
+	resp, err := m.pipe.LeaseSet(key1, []byte("data 01"), 223, LeaseSetOptions{})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, LeaseSetResponse{}, resp)
+
+	calls := m.originPipe.LeaseSetCalls()
+	assert.Equal(t, 1, len(calls))
+	assert.Equal(t, key1, calls[0].Key)
+	assert.Equal(t, []byte("data 01"), calls[0].Data)
+	assert.Equal(t, uint64(223), calls[0].Cas)
 }
