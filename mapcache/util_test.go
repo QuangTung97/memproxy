@@ -81,3 +81,29 @@ func TestMarshalCacheBucket(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, bucket, resultBucket)
 }
+
+func TestUnmarshalCacheBucket_Error(t *testing.T) {
+	resultBucket, err := unmarshalCacheBucket(nil)
+	assert.Equal(t, ErrMissingBucketContent, err)
+	assert.Equal(t, CacheBucketContent{}, resultBucket)
+
+	resultBucket, err = unmarshalCacheBucket([]byte{2})
+	assert.Equal(t, ErrInvalidBucketContentVersion, err)
+	assert.Equal(t, CacheBucketContent{}, resultBucket)
+
+	resultBucket, err = unmarshalCacheBucket([]byte{1})
+	assert.Equal(t, ErrMissingSizeLogOrigin, err)
+	assert.Equal(t, CacheBucketContent{}, resultBucket)
+
+	resultBucket, err = unmarshalCacheBucket([]byte{1, 22, 0, 0, 0, 0, 0, 0, 0})
+	assert.Equal(t, ErrMissingLength, err)
+	assert.Equal(t, CacheBucketContent{}, resultBucket)
+
+	resultBucket, err = unmarshalCacheBucket([]byte{1, 22, 0, 0, 0, 0, 0, 0, 0, 2})
+	assert.Equal(t, ErrMissingLength, err)
+	assert.Equal(t, CacheBucketContent{}, resultBucket)
+
+	resultBucket, err = unmarshalCacheBucket([]byte{1, 22, 0, 0, 0, 0, 0, 0, 0, 2, 1, 'A'})
+	assert.Equal(t, ErrMissingLength, err)
+	assert.Equal(t, CacheBucketContent{}, resultBucket)
+}

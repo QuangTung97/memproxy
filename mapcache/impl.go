@@ -95,6 +95,7 @@ func (p *mapCacheImpl) Get(
 	p.sess.AddNextCall(func() {
 		getResp, err := fn()
 		if err != nil {
+			params.setError(err)
 			return
 		}
 
@@ -102,16 +103,10 @@ func (p *mapCacheImpl) Get(
 			var bucket CacheBucketContent
 			bucket, err = unmarshalCacheBucket(getResp.Data)
 			if err != nil {
+				params.setError(err)
 				return
 			}
-			entry, ok := findEntryInList(bucket.Entries, key)
-			if ok {
-				params.resp = GetResponse{
-					Found: true,
-					Data:  entry.Data,
-				}
-			} else {
-			}
+			params.setResponse(bucket.Entries)
 			return
 		}
 
@@ -126,6 +121,7 @@ func (p *mapCacheImpl) Get(
 			var leaseGetResp memproxy.LeaseGetResponse
 			leaseGetResp, err = leaseGetFn()
 			if err != nil {
+				params.setError(err)
 				return
 			}
 
@@ -133,12 +129,10 @@ func (p *mapCacheImpl) Get(
 				return
 			}
 
-			// TODO
-			panic("not go here")
-
 			var bucket CacheBucketContent
 			bucket, err = unmarshalCacheBucket(leaseGetResp.Data)
 			if err != nil {
+				params.setError(err)
 				return
 			}
 
@@ -179,6 +173,11 @@ func (p *fillParams) setResponse(entries []Entry) {
 	}
 }
 
+func (p *fillParams) setError(err error) {
+	p.resp = GetResponse{}
+	p.err = err
+}
+
 func (f *memproxyFiller) Fill(
 	ctx context.Context, p interface{}, _ string,
 	completeFn func(resp memproxy.FillResponse, err error),
@@ -197,13 +196,15 @@ func (f *memproxyFiller) Fill(
 
 	cacheGetResp, err := params.lowKeyGetFn()
 	if err != nil {
-		// TODO
+		completeFn(memproxy.FillResponse{}, err)
 		return
 	}
+
 	if cacheGetResp.Found {
 		bucket, err := unmarshalCacheBucket(cacheGetResp.Data)
 		if err != nil {
-			// TODO
+			completeFn(memproxy.FillResponse{}, err)
+			return
 		}
 		doComplete(bucket.Entries, bucket.OriginSizeLogVersion)
 		return
@@ -213,7 +214,8 @@ func (f *memproxyFiller) Fill(
 	params.sess.AddNextCall(func() {
 		getResp, err := fn()
 		if err != nil {
-			// TODO
+			completeFn(memproxy.FillResponse{}, err)
+			return
 		}
 		doComplete(getResp.Entries, params.sizeLog)
 	})

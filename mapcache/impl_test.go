@@ -2,6 +2,7 @@ package mapcache
 
 import (
 	"context"
+	"errors"
 	"github.com/QuangTung97/memproxy"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -72,6 +73,15 @@ func (m *mapCacheTest) stubGetMulti(resp ...memproxy.GetResponse) {
 		index := len(m.pipe.GetCalls()) - 1
 		return func() (memproxy.GetResponse, error) {
 			return resp[index], nil
+		}
+	}
+}
+
+func (m *mapCacheTest) stubGetMultiErrors(errList ...error) {
+	m.pipe.GetFunc = func(key string, options memproxy.GetOptions) func() (memproxy.GetResponse, error) {
+		index := len(m.pipe.GetCalls()) - 1
+		return func() (memproxy.GetResponse, error) {
+			return memproxy.GetResponse{}, errList[index]
 		}
 	}
 }
@@ -325,4 +335,229 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Get_Lower__Found(t *
 		Entries:              entries,
 	}), setCalls[0].Data)
 	assert.Equal(t, uint64(887), setCalls[0].Cas)
+}
+
+func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get_Found(t *testing.T) {
+	m := newMapCacheTest()
+
+	const key1 = "key01"
+	const key2 = "key02"
+
+	entries := []Entry{
+		{
+			Key:  key1,
+			Data: []byte("key data 01"),
+		},
+		{
+			Key:  key2,
+			Data: []byte("key data 02"),
+		},
+	}
+
+	m.stubGetMulti(
+		memproxy.GetResponse{
+			Found: false,
+		},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusFound,
+		Data: marshalCacheBucket(CacheBucketContent{
+			OriginSizeLogVersion: 51,
+			Entries:              entries,
+		}),
+		CAS: 887,
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, GetResponse{
+		Found: true,
+		Data:  []byte("key data 01"),
+	}, resp)
+
+	calls := m.pipe.GetCalls()
+	assert.Equal(t, 2, len(calls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
+	assert.Equal(t, "rootkey:7:"+computeBucketKeyString(key1, 7), calls[1].Key)
+
+	leaseGetCalls := m.pipe.LeaseGetCalls()
+	assert.Equal(t, 1, len(leaseGetCalls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 0, len(setCalls))
+}
+
+func TestMapCache_Do_Call__Get__Error(t *testing.T) {
+	m := newMapCacheTest()
+
+	const key1 = "key01"
+
+	m.stubGet(memproxy.GetResponse{}, errors.New("some error"))
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, errors.New("some error"), err)
+	assert.Equal(t, GetResponse{}, resp)
+
+	calls := m.pipe.GetCalls()
+	assert.Equal(t, 1, len(calls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
+
+	leaseGetCalls := m.pipe.LeaseGetCalls()
+	assert.Equal(t, 0, len(leaseGetCalls))
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 0, len(setCalls))
+}
+
+func TestMapCache_Do_Call__Get_Found_But_Invalid_Data(t *testing.T) {
+	m := newMapCacheTest()
+
+	const key1 = "key01"
+
+	m.stubGet(memproxy.GetResponse{
+		Found: true,
+		Data:  []byte{22},
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, ErrInvalidBucketContentVersion, err)
+	assert.Equal(t, GetResponse{}, resp)
+
+	calls := m.pipe.GetCalls()
+	assert.Equal(t, 1, len(calls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
+
+	leaseGetCalls := m.pipe.LeaseGetCalls()
+	assert.Equal(t, 0, len(leaseGetCalls))
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 0, len(setCalls))
+}
+
+func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get_Error(t *testing.T) {
+	m := newMapCacheTest()
+
+	const key1 = "key01"
+
+	m.stubGetMulti(
+		memproxy.GetResponse{
+			Found: false,
+		},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{}, errors.New("some error"))
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, errors.New("some error"), err)
+	assert.Equal(t, GetResponse{}, resp)
+}
+
+func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get_Data_Invalid(t *testing.T) {
+	m := newMapCacheTest()
+
+	const key1 = "key01"
+
+	m.stubGetMulti(
+		memproxy.GetResponse{
+			Found: false,
+		},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusFound,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, ErrMissingBucketContent, err)
+	assert.Equal(t, GetResponse{}, resp)
+}
+
+func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Get_Lower_Error(t *testing.T) {
+	m := newMapCacheTest()
+
+	const key1 = "key01"
+
+	m.stubGetMultiErrors(
+		nil,
+		errors.New("some get error"),
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, errors.New("some get error"), err)
+	assert.Equal(t, GetResponse{}, resp)
+}
+
+func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Get_Lower_With_Invalid_Data(t *testing.T) {
+	m := newMapCacheTest()
+
+	const key1 = "key01"
+
+	m.stubGetMulti(
+		memproxy.GetResponse{
+			Found: false,
+		},
+		memproxy.GetResponse{
+			Found: true,
+			Data:  []byte{1},
+		},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, ErrMissingSizeLogOrigin, err)
+	assert.Equal(t, GetResponse{}, resp)
+}
+
+func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_GetBucket_Error(t *testing.T) {
+	m := newMapCacheTest()
+
+	const key1 = "key01"
+
+	m.stubGetMultiErrors(
+		nil,
+		nil,
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	m.stubFillerGetBucket(GetBucketResponse{}, errors.New("get bucket error"))
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, errors.New("get bucket error"), err)
+	assert.Equal(t, GetResponse{}, resp)
 }

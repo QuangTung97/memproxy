@@ -57,6 +57,9 @@ func putIntNumber(buf *bytes.Buffer, num int) {
 
 func parseIntNumber(data []byte) ([]byte, int, error) {
 	num, n := binary.Uvarint(data)
+	if n <= 0 {
+		return nil, 0, ErrMissingLength
+	}
 	return data[n:], int(num), nil
 }
 
@@ -91,13 +94,25 @@ func cloneBytes(data []byte) []byte {
 }
 
 func unmarshalCacheBucket(data []byte) (CacheBucketContent, error) {
-	data = data[1:] // TODO
+	if len(data) == 0 {
+		return CacheBucketContent{}, ErrMissingBucketContent
+	}
+
+	if data[0] != version {
+		return CacheBucketContent{}, ErrInvalidBucketContentVersion
+	}
+	data = data[1:]
+
+	if len(data) < 8 {
+		return CacheBucketContent{}, ErrMissingSizeLogOrigin
+	}
+
 	origin := binary.LittleEndian.Uint64(data)
-	data = data[8:] // TODO
+	data = data[8:]
 
 	data, numEntries, err := parseIntNumber(data)
 	if err != nil {
-		// TODO
+		return CacheBucketContent{}, err
 	}
 
 	entries := make([]Entry, 0, numEntries)
@@ -107,7 +122,7 @@ func unmarshalCacheBucket(data []byte) (CacheBucketContent, error) {
 		var keyLen int
 		data, keyLen, err = parseIntNumber(data)
 		if err != nil {
-			// TODO
+			return CacheBucketContent{}, err
 		}
 
 		entry.Key = string(data[:keyLen])
@@ -116,7 +131,7 @@ func unmarshalCacheBucket(data []byte) (CacheBucketContent, error) {
 		var dataLen int
 		data, dataLen, err = parseIntNumber(data)
 		if err != nil {
-			// TODO
+			return CacheBucketContent{}, err
 		}
 
 		entry.Data = cloneBytes(data[:dataLen])
