@@ -27,16 +27,11 @@ func NewPlainMemcache(client *memcache.Client, leaseDuration uint32) Memcache {
 }
 
 // Pipeline ...
-func (m *plainMemcacheImpl) Pipeline(_ context.Context) Pipeline {
+func (m *plainMemcacheImpl) Pipeline(_ context.Context, _ Session) Pipeline {
 	return &plainPipelineImpl{
 		pipeline:      m.client.Pipeline(),
 		leaseDuration: m.leaseDuration,
 	}
-}
-
-// PipelineWithSession ...
-func (m *plainMemcacheImpl) PipelineWithSession(ctx context.Context, _ Session) Pipeline {
-	return m.Pipeline(ctx)
 }
 
 // Get ...

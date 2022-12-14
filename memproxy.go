@@ -9,8 +9,7 @@ import (
 
 // Memcache represents a generic Memcache interface
 type Memcache interface {
-	Pipeline(ctx context.Context) Pipeline
-	PipelineWithSession(ctx context.Context, sess Session) Pipeline
+	Pipeline(ctx context.Context, sess Session) Pipeline
 }
 
 // Pipeline represents a generic Pipeline
@@ -47,6 +46,7 @@ type GetResponse struct {
 
 // LeaseGetOptions lease get options
 type LeaseGetOptions struct {
+	FillParams interface{}
 }
 
 // LeaseGetStatus status of lease get
@@ -89,10 +89,11 @@ type DeleteResponse struct {
 
 // FillResponse fill response
 type FillResponse struct {
-	Data []byte
+	Found bool // TODO
+	Data  []byte
 }
 
 // Filler for filling memcache contents
 type Filler interface {
-	Fill(ctx context.Context, key string, completeFn func(resp FillResponse, err error))
+	Fill(ctx context.Context, params interface{}, key string, completeFn func(resp FillResponse, err error))
 }

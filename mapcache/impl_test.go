@@ -24,8 +24,14 @@ func newTestContext() context.Context {
 
 func newMapCacheTest() *mapCacheTest {
 	sess := &memproxy.SessionMock{}
-	pipe := &memproxy.PipelineMock{}
 	filler := &FillerMock{}
+
+	client := &memproxy.MemcacheMock{}
+	pipe := &memproxy.PipelineMock{}
+
+	client.PipelineFunc = func(ctx context.Context, sess memproxy.Session) memproxy.Pipeline {
+		return pipe
+	}
 
 	var calls []func()
 	sess.AddNextCallFunc = func(fn func()) {
@@ -41,11 +47,11 @@ func newMapCacheTest() *mapCacheTest {
 		}
 	}
 
-	provider := NewProvider(filler)
+	provider := NewProvider(client, filler)
 	return &mapCacheTest{
 		pipe:   pipe,
 		filler: filler,
-		mc: provider.New(newTestContext(), sess, pipe, "rootkey", SizeLog{
+		mc: provider.New(newTestContext(), sess, "rootkey", SizeLog{
 			Current:  8,
 			Previous: 7,
 			Version:  51,
@@ -95,6 +101,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Data(t
 	m := newMapCacheTest()
 
 	const key1 = "key01"
+	const key2 = "key02"
 
 	m.stubGet(memproxy.GetResponse{
 		Found: false,
@@ -105,13 +112,19 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Data(t
 		CAS:    887,
 	}, nil)
 
-	m.stubFillerGetBucket(GetBucketResponse{
-		Entries: []Entry{
-			{
-				Key:  key1,
-				Data: []byte("key data 01"),
-			},
+	entries := []Entry{
+		{
+			Key:  key1,
+			Data: []byte("key data 01"),
 		},
+		{
+			Key:  key2,
+			Data: []byte("key data 02"),
+		},
+	}
+
+	m.stubFillerGetBucket(GetBucketResponse{
+		Entries: entries,
 	}, nil)
 
 	m.stubLeaseSet(nil)
@@ -133,6 +146,15 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Data(t
 	leaseGetCalls := m.pipe.LeaseGetCalls()
 	assert.Equal(t, 1, len(leaseGetCalls))
 	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 1, len(setCalls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
+	assert.Equal(t, marshalCacheBucket(CacheBucketContent{
+		OriginSizeLogVersion: 8,
+		Entries:              entries,
+	}), setCalls[0].Data)
+	assert.Equal(t, uint64(887), setCalls[0].Cas)
 }
 
 func TestMapCache_Do_Call__Get__Found__Returns_Immediately(t *testing.T) {

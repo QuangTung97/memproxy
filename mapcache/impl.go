@@ -7,30 +7,30 @@ import (
 )
 
 type providerImpl struct {
-	filler Filler
+	client memproxy.Memcache
 }
 
 var _ Provider = &providerImpl{}
 
 // NewProvider ...
-func NewProvider(filler Filler) Provider {
+func NewProvider(
+	client memproxy.Memcache, filler Filler,
+) Provider {
 	return &providerImpl{
-		filler: filler,
+		client: memproxy.NewFillerMemcache(client, &memproxyFiller{filler: filler}),
 	}
 }
 
 // New ...
 func (p *providerImpl) New(
-	ctx context.Context,
-	sess memproxy.Session, pipeline memproxy.Pipeline,
+	ctx context.Context, sess memproxy.Session,
 	rootKey string, sizeLog SizeLog,
 ) MapCache {
 	return &mapCacheImpl{
 		sess:     sess,
 		rootKey:  rootKey,
 		sizeLog:  sizeLog,
-		pipeline: pipeline,
-		filler:   p.filler,
+		pipeline: p.client.Pipeline(ctx, sess),
 	}
 }
 
@@ -39,7 +39,6 @@ type mapCacheImpl struct {
 	rootKey  string
 	sizeLog  SizeLog
 	pipeline memproxy.Pipeline
-	filler   Filler
 }
 
 func (p *mapCacheImpl) getCacheKey(keyHash uint64, sizeLog uint64) string {
@@ -56,19 +55,39 @@ func findEntryInList(entries []Entry, key string) (Entry, bool) {
 	return Entry{}, false
 }
 
+type fillParams struct {
+	sess memproxy.Session
+
+	rootKey   string
+	key       string
+	hashRange HashRange
+	sizeLog   uint64
+
+	resp GetResponse
+	err  error
+}
+
 // Get ...
 func (p *mapCacheImpl) Get(
 	key string, _ GetOptions,
 ) func() (GetResponse, error) {
 	keyHash := hashFunc(key)
+
 	highKey := p.getCacheKey(keyHash, p.sizeLog.Current)
 	fn := p.pipeline.Get(highKey, memproxy.GetOptions{})
 
-	var resp GetResponse
-	var err error
+	hashRange := computeHashRange(keyHash, p.sizeLog.Current)
+	params := &fillParams{
+		sess: p.sess,
+
+		rootKey:   p.rootKey,
+		key:       key,
+		hashRange: hashRange,
+		sizeLog:   p.sizeLog.Current,
+	}
+
 	p.sess.AddNextCall(func() {
-		var getResp memproxy.GetResponse
-		getResp, err = fn()
+		getResp, err := fn()
 		if err != nil {
 			return
 		}
@@ -81,7 +100,7 @@ func (p *mapCacheImpl) Get(
 			}
 			entry, ok := findEntryInList(bucket.Entries, key)
 			if ok {
-				resp = GetResponse{
+				params.resp = GetResponse{
 					Found: true,
 					Data:  entry.Data,
 				}
@@ -90,8 +109,11 @@ func (p *mapCacheImpl) Get(
 			return
 		}
 
+		leaseGetFn := p.pipeline.LeaseGet(highKey, memproxy.LeaseGetOptions{
+			FillParams: params,
+		})
+
 		lowKey := p.getCacheKey(keyHash, p.sizeLog.Previous)
-		leaseGetFn := p.pipeline.LeaseGet(highKey, memproxy.LeaseGetOptions{})
 		p.pipeline.Get(lowKey, memproxy.GetOptions{})
 
 		p.sess.AddNextCall(func() {
@@ -101,35 +123,27 @@ func (p *mapCacheImpl) Get(
 				return
 			}
 
-			hashRange := computeHashRange(keyHash, p.sizeLog.Current)
+			var bucket CacheBucketContent
+			bucket, err = unmarshalCacheBucket(leaseGetResp.Data)
+			if err != nil {
+				return
+			}
 
-			getBucketFn := p.filler.GetBucket(context.TODO(), p.rootKey, hashRange)
-
-			p.sess.AddNextCall(func() {
-				var bucketResp GetBucketResponse
-				bucketResp, err = getBucketFn()
-				if err != nil {
-					return
+			entry, ok := findEntryInList(bucket.Entries, key)
+			if ok {
+				params.resp = GetResponse{
+					Found: true,
+					Data:  entry.Data,
 				}
-
-				entry, ok := findEntryInList(bucketResp.Entries, key)
-				if ok {
-					p.pipeline.LeaseSet(highKey, entry.Data, leaseGetResp.CAS, memproxy.LeaseSetOptions{})
-					resp = GetResponse{
-						Found: true,
-						Data:  entry.Data,
-					}
-				} else {
-					// TODO Not Found
-					// TODO Delete CAS
-				}
-			})
+			} else {
+				// TODO
+			}
 		})
 	})
 
 	return func() (GetResponse, error) {
 		p.sess.Execute()
-		return resp, err
+		return params.resp, params.err
 	}
 }
 
@@ -138,4 +152,41 @@ func (p *mapCacheImpl) DeleteKey(
 	key string, options DeleteKeyOptions,
 ) string {
 	return ""
+}
+
+type memproxyFiller struct {
+	filler Filler
+}
+
+var _ memproxy.Filler = &memproxyFiller{}
+
+func (f *memproxyFiller) Fill(
+	ctx context.Context, p interface{}, _ string,
+	completeFn func(resp memproxy.FillResponse, err error),
+) {
+	params := p.(*fillParams)
+	fn := f.filler.GetBucket(ctx, params.rootKey, params.hashRange)
+	params.sess.AddNextCall(func() {
+		getResp, err := fn()
+		if err != nil {
+			// TODO
+		}
+
+		entry, ok := findEntryInList(getResp.Entries, params.key)
+		if !ok {
+			// TODO
+		}
+
+		params.resp = GetResponse{
+			Found: true,
+			Data:  entry.Data,
+		}
+
+		completeFn(memproxy.FillResponse{
+			Data: marshalCacheBucket(CacheBucketContent{
+				OriginSizeLogVersion: params.sizeLog,
+				Entries:              getResp.Entries,
+			}),
+		}, nil)
+	})
 }

@@ -19,11 +19,8 @@ var _ Memcache = &MemcacheMock{}
 //
 // 		// make and configure a mocked Memcache
 // 		mockedMemcache := &MemcacheMock{
-// 			PipelineFunc: func(ctx context.Context) Pipeline {
+// 			PipelineFunc: func(ctx context.Context, sess Session) Pipeline {
 // 				panic("mock out the Pipeline method")
-// 			},
-// 			PipelineWithSessionFunc: func(ctx context.Context, sess Session) Pipeline {
-// 				panic("mock out the PipelineWithSession method")
 // 			},
 // 		}
 //
@@ -33,10 +30,7 @@ var _ Memcache = &MemcacheMock{}
 // 	}
 type MemcacheMock struct {
 	// PipelineFunc mocks the Pipeline method.
-	PipelineFunc func(ctx context.Context) Pipeline
-
-	// PipelineWithSessionFunc mocks the PipelineWithSession method.
-	PipelineWithSessionFunc func(ctx context.Context, sess Session) Pipeline
+	PipelineFunc func(ctx context.Context, sess Session) Pipeline
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -44,54 +38,17 @@ type MemcacheMock struct {
 		Pipeline []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-		}
-		// PipelineWithSession holds details about calls to the PipelineWithSession method.
-		PipelineWithSession []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
 			// Sess is the sess argument value.
 			Sess Session
 		}
 	}
-	lockPipeline            sync.RWMutex
-	lockPipelineWithSession sync.RWMutex
+	lockPipeline sync.RWMutex
 }
 
 // Pipeline calls PipelineFunc.
-func (mock *MemcacheMock) Pipeline(ctx context.Context) Pipeline {
+func (mock *MemcacheMock) Pipeline(ctx context.Context, sess Session) Pipeline {
 	if mock.PipelineFunc == nil {
 		panic("MemcacheMock.PipelineFunc: method is nil but Memcache.Pipeline was just called")
-	}
-	callInfo := struct {
-		Ctx context.Context
-	}{
-		Ctx: ctx,
-	}
-	mock.lockPipeline.Lock()
-	mock.calls.Pipeline = append(mock.calls.Pipeline, callInfo)
-	mock.lockPipeline.Unlock()
-	return mock.PipelineFunc(ctx)
-}
-
-// PipelineCalls gets all the calls that were made to Pipeline.
-// Check the length with:
-//     len(mockedMemcache.PipelineCalls())
-func (mock *MemcacheMock) PipelineCalls() []struct {
-	Ctx context.Context
-} {
-	var calls []struct {
-		Ctx context.Context
-	}
-	mock.lockPipeline.RLock()
-	calls = mock.calls.Pipeline
-	mock.lockPipeline.RUnlock()
-	return calls
-}
-
-// PipelineWithSession calls PipelineWithSessionFunc.
-func (mock *MemcacheMock) PipelineWithSession(ctx context.Context, sess Session) Pipeline {
-	if mock.PipelineWithSessionFunc == nil {
-		panic("MemcacheMock.PipelineWithSessionFunc: method is nil but Memcache.PipelineWithSession was just called")
 	}
 	callInfo := struct {
 		Ctx  context.Context
@@ -100,16 +57,16 @@ func (mock *MemcacheMock) PipelineWithSession(ctx context.Context, sess Session)
 		Ctx:  ctx,
 		Sess: sess,
 	}
-	mock.lockPipelineWithSession.Lock()
-	mock.calls.PipelineWithSession = append(mock.calls.PipelineWithSession, callInfo)
-	mock.lockPipelineWithSession.Unlock()
-	return mock.PipelineWithSessionFunc(ctx, sess)
+	mock.lockPipeline.Lock()
+	mock.calls.Pipeline = append(mock.calls.Pipeline, callInfo)
+	mock.lockPipeline.Unlock()
+	return mock.PipelineFunc(ctx, sess)
 }
 
-// PipelineWithSessionCalls gets all the calls that were made to PipelineWithSession.
+// PipelineCalls gets all the calls that were made to Pipeline.
 // Check the length with:
-//     len(mockedMemcache.PipelineWithSessionCalls())
-func (mock *MemcacheMock) PipelineWithSessionCalls() []struct {
+//     len(mockedMemcache.PipelineCalls())
+func (mock *MemcacheMock) PipelineCalls() []struct {
 	Ctx  context.Context
 	Sess Session
 } {
@@ -117,9 +74,9 @@ func (mock *MemcacheMock) PipelineWithSessionCalls() []struct {
 		Ctx  context.Context
 		Sess Session
 	}
-	mock.lockPipelineWithSession.RLock()
-	calls = mock.calls.PipelineWithSession
-	mock.lockPipelineWithSession.RUnlock()
+	mock.lockPipeline.RLock()
+	calls = mock.calls.Pipeline
+	mock.lockPipeline.RUnlock()
 	return calls
 }
 
@@ -643,7 +600,7 @@ var _ Filler = &FillerMock{}
 //
 // 		// make and configure a mocked Filler
 // 		mockedFiller := &FillerMock{
-// 			FillFunc: func(ctx context.Context, key string, completeFn func(resp FillResponse, err error))  {
+// 			FillFunc: func(ctx context.Context, params interface{}, key string, completeFn func(resp FillResponse, err error))  {
 // 				panic("mock out the Fill method")
 // 			},
 // 		}
@@ -654,7 +611,7 @@ var _ Filler = &FillerMock{}
 // 	}
 type FillerMock struct {
 	// FillFunc mocks the Fill method.
-	FillFunc func(ctx context.Context, key string, completeFn func(resp FillResponse, err error))
+	FillFunc func(ctx context.Context, params interface{}, key string, completeFn func(resp FillResponse, err error))
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -662,6 +619,8 @@ type FillerMock struct {
 		Fill []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Params is the params argument value.
+			Params interface{}
 			// Key is the key argument value.
 			Key string
 			// CompleteFn is the completeFn argument value.
@@ -672,23 +631,25 @@ type FillerMock struct {
 }
 
 // Fill calls FillFunc.
-func (mock *FillerMock) Fill(ctx context.Context, key string, completeFn func(resp FillResponse, err error)) {
+func (mock *FillerMock) Fill(ctx context.Context, params interface{}, key string, completeFn func(resp FillResponse, err error)) {
 	if mock.FillFunc == nil {
 		panic("FillerMock.FillFunc: method is nil but Filler.Fill was just called")
 	}
 	callInfo := struct {
 		Ctx        context.Context
+		Params     interface{}
 		Key        string
 		CompleteFn func(resp FillResponse, err error)
 	}{
 		Ctx:        ctx,
+		Params:     params,
 		Key:        key,
 		CompleteFn: completeFn,
 	}
 	mock.lockFill.Lock()
 	mock.calls.Fill = append(mock.calls.Fill, callInfo)
 	mock.lockFill.Unlock()
-	mock.FillFunc(ctx, key, completeFn)
+	mock.FillFunc(ctx, params, key, completeFn)
 }
 
 // FillCalls gets all the calls that were made to Fill.
@@ -696,11 +657,13 @@ func (mock *FillerMock) Fill(ctx context.Context, key string, completeFn func(re
 //     len(mockedFiller.FillCalls())
 func (mock *FillerMock) FillCalls() []struct {
 	Ctx        context.Context
+	Params     interface{}
 	Key        string
 	CompleteFn func(resp FillResponse, err error)
 } {
 	var calls []struct {
 		Ctx        context.Context
+		Params     interface{}
 		Key        string
 		CompleteFn func(resp FillResponse, err error)
 	}

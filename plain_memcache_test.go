@@ -29,7 +29,7 @@ func newPlainMemcacheTest(t *testing.T) *plainMemcacheTest {
 	cache := NewPlainMemcache(client, 7)
 
 	return &plainMemcacheTest{
-		pipe: cache.PipelineWithSession(context.Background(), nil),
+		pipe: cache.Pipeline(context.Background(), nil),
 	}
 }
 

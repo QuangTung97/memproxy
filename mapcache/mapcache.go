@@ -10,8 +10,7 @@ import (
 // Provider for user managed size log
 type Provider interface {
 	New(ctx context.Context,
-		sess memproxy.Session, pipeline memproxy.Pipeline,
-		rootKey string, sizeLog SizeLog,
+		sess memproxy.Session, rootKey string, sizeLog SizeLog,
 	) MapCache
 }
 

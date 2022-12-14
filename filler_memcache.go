@@ -6,20 +6,18 @@ import (
 )
 
 type fillerMemcacheImpl struct {
-	origin   Memcache
-	provider SessionProvider
-	filler   Filler
+	origin Memcache
+	filler Filler
 }
 
 var _ Memcache = &fillerMemcacheImpl{}
 
 // NewFillerMemcache protects again then *Thundering Herb Problem*
-// With this Decorator, Status = LeaseGetStatusLeaseRejected will never happen
-func NewFillerMemcache(origin Memcache, provider SessionProvider, filler Filler) Memcache {
+// With this Decorator, status = LeaseGetStatusLeaseGranted or status = LeaseGetStatusLeaseRejected will never happen
+func NewFillerMemcache(origin Memcache, filler Filler) Memcache {
 	return &fillerMemcacheImpl{
-		origin:   origin,
-		provider: provider,
-		filler:   filler,
+		origin: origin,
+		filler: filler,
 	}
 }
 
@@ -34,14 +32,9 @@ type fillerPipelineImpl struct {
 var _ Pipeline = &fillerPipelineImpl{}
 
 // Pipeline ...
-func (m *fillerMemcacheImpl) Pipeline(ctx context.Context) Pipeline {
-	return m.PipelineWithSession(ctx, m.provider.New())
-}
-
-// PipelineWithSession ...
-func (m *fillerMemcacheImpl) PipelineWithSession(ctx context.Context, sess Session) Pipeline {
+func (m *fillerMemcacheImpl) Pipeline(ctx context.Context, sess Session) Pipeline {
 	return &fillerPipelineImpl{
-		Pipeline: m.origin.PipelineWithSession(ctx, sess),
+		Pipeline: m.origin.Pipeline(ctx, sess),
 
 		ctx:    ctx,
 		sess:   sess,
@@ -90,7 +83,7 @@ func (p *fillerPipelineImpl) LeaseGet(key string, options LeaseGetOptions) func(
 					Data:   fillResp.Data,
 				}
 			}
-			p.filler.Fill(p.ctx, key, completeFn)
+			p.filler.Fill(p.ctx, options.FillParams, key, completeFn)
 			return
 		}
 
