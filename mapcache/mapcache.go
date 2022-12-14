@@ -5,11 +5,13 @@ import (
 	"github.com/QuangTung97/memproxy"
 )
 
+//go:generate moq -rm -out mapcache_mocks_test.go . Filler
+
 // Provider for user managed size log
 type Provider interface {
 	New(ctx context.Context,
 		sess memproxy.Session, pipeline memproxy.Pipeline,
-		rootKey string, sizeLog uint64,
+		rootKey string, sizeLog SizeLog,
 	) MapCache
 }
 
@@ -18,12 +20,12 @@ type Provider interface {
 // MapCache for handling big hash tables in memcached
 type MapCache interface {
 	Get(key string, options GetOptions) func() (GetResponse, error)
-	Delete(key string, options DeleteOptions) func() (DeleteResponse, error)
+	DeleteKey(key string, options DeleteKeyOptions) string
 }
 
 // Filler ...
 type Filler interface {
-	GetBucket(ctx context.Context, rootKey string, hash uint64) func() (GetBucketsResponse, error)
+	GetBucket(ctx context.Context, rootKey string, hashRange HashRange) func() (GetBucketResponse, error)
 }
 
 // GetOptions ...
@@ -42,20 +44,34 @@ type Entry struct {
 	Data []byte
 }
 
-// Bucket ...
-type Bucket struct {
-	Hash uint64
-}
-
-// GetBucketsResponse ...
-type GetBucketsResponse struct {
+// GetBucketResponse ...
+type GetBucketResponse struct {
 	Entries []Entry
 }
 
-// DeleteOptions ...
-type DeleteOptions struct {
+// DeleteKeyOptions ...
+type DeleteKeyOptions struct {
 }
 
 // DeleteResponse ...
 type DeleteResponse struct {
+}
+
+// SizeLog ...
+type SizeLog struct {
+	Current  uint64 // current size log value
+	Previous uint64 // previous size log value
+	Version  uint64
+}
+
+// CacheBucketContent ...
+type CacheBucketContent struct {
+	OriginSizeLogVersion uint64
+	Entries              []Entry
+}
+
+// HashRange ...
+type HashRange struct {
+	Begin uint64 // inclusive
+	End   uint64 // inclusive
 }
