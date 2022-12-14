@@ -55,14 +55,23 @@ func newMapCacheTest() *mapCacheTest {
 			Current:  8,
 			Previous: 7,
 			Version:  51,
-		}),
+		}, NewOptions{Params: "root-params"}),
 	}
 }
 
 func (m *mapCacheTest) stubGet(resp memproxy.GetResponse, err error) {
 	m.pipe.GetFunc = func(key string, options memproxy.GetOptions) func() (memproxy.GetResponse, error) {
 		return func() (memproxy.GetResponse, error) {
-			return resp, nil
+			return resp, err
+		}
+	}
+}
+
+func (m *mapCacheTest) stubGetMulti(resp ...memproxy.GetResponse) {
+	m.pipe.GetFunc = func(key string, options memproxy.GetOptions) func() (memproxy.GetResponse, error) {
+		index := len(m.pipe.GetCalls()) - 1
+		return func() (memproxy.GetResponse, error) {
+			return resp[index], nil
 		}
 	}
 }
@@ -79,7 +88,7 @@ func (m *mapCacheTest) stubLeaseGet(resp memproxy.LeaseGetResponse, err error) {
 
 func (m *mapCacheTest) stubFillerGetBucket(resp GetBucketResponse, err error) {
 	m.filler.GetBucketFunc = func(
-		ctx context.Context, rootKey string, hashRange HashRange,
+		ctx context.Context, newOptions NewOptions, hashRange HashRange,
 	) func() (GetBucketResponse, error) {
 		return func() (GetBucketResponse, error) {
 			return resp, err
@@ -155,6 +164,12 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Data(t
 		Entries:              entries,
 	}), setCalls[0].Data)
 	assert.Equal(t, uint64(887), setCalls[0].Cas)
+
+	getBucketCalls := m.filler.GetBucketCalls()
+	assert.Equal(t, 1, len(getBucketCalls))
+	assert.Equal(t, newTestContext(), getBucketCalls[0].Ctx)
+	assert.Equal(t, NewOptions{Params: "root-params"}, getBucketCalls[0].Options)
+	assert.Equal(t, computeHashRange(hashFunc(key1), 8), getBucketCalls[0].HashRange)
 }
 
 func TestMapCache_Do_Call__Get__Found__Returns_Immediately(t *testing.T) {
@@ -192,4 +207,122 @@ func TestMapCache_Do_Call__Get__Found__Returns_Immediately(t *testing.T) {
 	calls := m.pipe.GetCalls()
 	assert.Equal(t, 1, len(calls))
 	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
+}
+
+func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Not_Found(t *testing.T) {
+	m := newMapCacheTest()
+
+	const key1 = "key01"
+	const key2 = "key02"
+
+	m.stubGet(memproxy.GetResponse{
+		Found: false,
+	}, nil)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    887,
+	}, nil)
+
+	entries := []Entry{
+		{
+			Key:  key2,
+			Data: []byte("key data 02"),
+		},
+	}
+
+	m.stubFillerGetBucket(GetBucketResponse{
+		Entries: entries,
+	}, nil)
+
+	m.stubLeaseSet(nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, GetResponse{}, resp)
+
+	calls := m.pipe.GetCalls()
+	assert.Equal(t, 2, len(calls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
+	assert.Equal(t, "rootkey:7:"+computeBucketKeyString(key1, 7), calls[1].Key)
+
+	leaseGetCalls := m.pipe.LeaseGetCalls()
+	assert.Equal(t, 1, len(leaseGetCalls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 1, len(setCalls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
+	assert.Equal(t, marshalCacheBucket(CacheBucketContent{
+		OriginSizeLogVersion: 8,
+		Entries:              entries,
+	}), setCalls[0].Data)
+	assert.Equal(t, uint64(887), setCalls[0].Cas)
+}
+
+func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Get_Lower__Found(t *testing.T) {
+	m := newMapCacheTest()
+
+	const key1 = "key01"
+	const key2 = "key02"
+
+	entries := []Entry{
+		{
+			Key:  key1,
+			Data: []byte("key data 01"),
+		},
+		{
+			Key:  key2,
+			Data: []byte("key data 02"),
+		},
+	}
+
+	m.stubGetMulti(
+		memproxy.GetResponse{
+			Found: false,
+		},
+		memproxy.GetResponse{
+			Found: true,
+			Data: marshalCacheBucket(CacheBucketContent{
+				OriginSizeLogVersion: 50,
+				Entries:              entries,
+			}),
+		},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    887,
+	}, nil)
+
+	m.stubLeaseSet(nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, GetResponse{
+		Found: true,
+		Data:  []byte("key data 01"),
+	}, resp)
+
+	calls := m.pipe.GetCalls()
+	assert.Equal(t, 2, len(calls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
+	assert.Equal(t, "rootkey:7:"+computeBucketKeyString(key1, 7), calls[1].Key)
+
+	leaseGetCalls := m.pipe.LeaseGetCalls()
+	assert.Equal(t, 1, len(leaseGetCalls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 1, len(setCalls))
+	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
+	assert.Equal(t, marshalCacheBucket(CacheBucketContent{
+		OriginSizeLogVersion: 50,
+		Entries:              entries,
+	}), setCalls[0].Data)
+	assert.Equal(t, uint64(887), setCalls[0].Cas)
 }

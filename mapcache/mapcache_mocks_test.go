@@ -18,7 +18,7 @@ var _ Filler = &FillerMock{}
 //
 // 		// make and configure a mocked Filler
 // 		mockedFiller := &FillerMock{
-// 			GetBucketFunc: func(ctx context.Context, rootKey string, hashRange HashRange) func() (GetBucketResponse, error) {
+// 			GetBucketFunc: func(ctx context.Context, options NewOptions, hashRange HashRange) func() (GetBucketResponse, error) {
 // 				panic("mock out the GetBucket method")
 // 			},
 // 		}
@@ -29,7 +29,7 @@ var _ Filler = &FillerMock{}
 // 	}
 type FillerMock struct {
 	// GetBucketFunc mocks the GetBucket method.
-	GetBucketFunc func(ctx context.Context, rootKey string, hashRange HashRange) func() (GetBucketResponse, error)
+	GetBucketFunc func(ctx context.Context, options NewOptions, hashRange HashRange) func() (GetBucketResponse, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -37,8 +37,8 @@ type FillerMock struct {
 		GetBucket []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// RootKey is the rootKey argument value.
-			RootKey string
+			// Options is the options argument value.
+			Options NewOptions
 			// HashRange is the hashRange argument value.
 			HashRange HashRange
 		}
@@ -47,23 +47,23 @@ type FillerMock struct {
 }
 
 // GetBucket calls GetBucketFunc.
-func (mock *FillerMock) GetBucket(ctx context.Context, rootKey string, hashRange HashRange) func() (GetBucketResponse, error) {
+func (mock *FillerMock) GetBucket(ctx context.Context, options NewOptions, hashRange HashRange) func() (GetBucketResponse, error) {
 	if mock.GetBucketFunc == nil {
 		panic("FillerMock.GetBucketFunc: method is nil but Filler.GetBucket was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
-		RootKey   string
+		Options   NewOptions
 		HashRange HashRange
 	}{
 		Ctx:       ctx,
-		RootKey:   rootKey,
+		Options:   options,
 		HashRange: hashRange,
 	}
 	mock.lockGetBucket.Lock()
 	mock.calls.GetBucket = append(mock.calls.GetBucket, callInfo)
 	mock.lockGetBucket.Unlock()
-	return mock.GetBucketFunc(ctx, rootKey, hashRange)
+	return mock.GetBucketFunc(ctx, options, hashRange)
 }
 
 // GetBucketCalls gets all the calls that were made to GetBucket.
@@ -71,12 +71,12 @@ func (mock *FillerMock) GetBucket(ctx context.Context, rootKey string, hashRange
 //     len(mockedFiller.GetBucketCalls())
 func (mock *FillerMock) GetBucketCalls() []struct {
 	Ctx       context.Context
-	RootKey   string
+	Options   NewOptions
 	HashRange HashRange
 } {
 	var calls []struct {
 		Ctx       context.Context
-		RootKey   string
+		Options   NewOptions
 		HashRange HashRange
 	}
 	mock.lockGetBucket.RLock()

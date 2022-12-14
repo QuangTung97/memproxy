@@ -7,10 +7,15 @@ import (
 
 //go:generate moq -rm -out mapcache_mocks_test.go . Filler
 
+type NewOptions struct {
+	Params interface{}
+}
+
 // Provider for user managed size log
 type Provider interface {
 	New(ctx context.Context,
-		sess memproxy.Session, rootKey string, sizeLog SizeLog,
+		sess memproxy.Session, rootKey string,
+		sizeLog SizeLog, options NewOptions,
 	) MapCache
 }
 
@@ -24,7 +29,7 @@ type MapCache interface {
 
 // Filler ...
 type Filler interface {
-	GetBucket(ctx context.Context, rootKey string, hashRange HashRange) func() (GetBucketResponse, error)
+	GetBucket(ctx context.Context, options NewOptions, hashRange HashRange) func() (GetBucketResponse, error)
 }
 
 // GetOptions ...
