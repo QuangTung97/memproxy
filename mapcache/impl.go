@@ -115,7 +115,7 @@ func (p *mapCacheImpl) Get(
 		})
 
 		lowKey := p.getCacheKey(keyHash, p.sizeLog.Previous)
-		params.lowKeyGetFn = p.pipeline.Get(lowKey, memproxy.GetOptions{})
+		params.lowKeyGetFn = p.pipeline.Get(lowKey, memproxy.GetOptions{}) // TODO From 2 Buckets
 
 		p.sess.AddNextCall(func() {
 			var leaseGetResp memproxy.LeaseGetResponse
@@ -146,11 +146,11 @@ func (p *mapCacheImpl) Get(
 	}
 }
 
-// DeleteKey ...
-func (p *mapCacheImpl) DeleteKey(
+// DeleteKeys ...
+func (p *mapCacheImpl) DeleteKeys(
 	key string, options DeleteKeyOptions,
-) string {
-	return ""
+) []string {
+	return nil
 }
 
 type memproxyFiller struct {
@@ -178,6 +178,17 @@ func (p *fillParams) setError(err error) {
 	p.err = err
 }
 
+func filterEntriesByHashRange(entries []Entry, hashRange HashRange) []Entry {
+	result := make([]Entry, 0, len(entries)/2)
+	for _, e := range entries {
+		h := hashFunc(e.Key)
+		if h >= hashRange.Begin && h <= hashRange.End {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
 func (f *memproxyFiller) Fill(
 	ctx context.Context, p interface{}, _ string,
 	completeFn func(resp memproxy.FillResponse, err error),
@@ -189,7 +200,7 @@ func (f *memproxyFiller) Fill(
 		completeFn(memproxy.FillResponse{
 			Data: marshalCacheBucket(CacheBucketContent{
 				OriginSizeLogVersion: originVersion,
-				Entries:              entries, // TODO filtering
+				Entries:              entries,
 			}),
 		}, nil)
 	}
@@ -206,7 +217,11 @@ func (f *memproxyFiller) Fill(
 			completeFn(memproxy.FillResponse{}, err)
 			return
 		}
-		doComplete(bucket.Entries, bucket.OriginSizeLogVersion)
+
+		// TODO Check Origin Size Version
+
+		entries := filterEntriesByHashRange(bucket.Entries, params.hashRange)
+		doComplete(entries, bucket.OriginSizeLogVersion)
 		return
 	}
 

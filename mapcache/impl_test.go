@@ -23,7 +23,15 @@ func newTestContext() context.Context {
 	return context.WithValue(context.Background(), ctxTestKey, "test-value")
 }
 
-func newMapCacheTest() *mapCacheTest {
+func defaultSizeLog() SizeLog {
+	return SizeLog{
+		Current:  8,
+		Previous: 7,
+		Version:  51,
+	}
+}
+
+func newMapCacheTest(sizeLog SizeLog) *mapCacheTest {
 	sess := &memproxy.SessionMock{}
 	filler := &FillerMock{}
 
@@ -52,11 +60,7 @@ func newMapCacheTest() *mapCacheTest {
 	return &mapCacheTest{
 		pipe:   pipe,
 		filler: filler,
-		mc: provider.New(newTestContext(), sess, "rootkey", SizeLog{
-			Current:  8,
-			Previous: 7,
-			Version:  51,
-		}, NewOptions{Params: "root-params"}),
+		mc:     provider.New(newTestContext(), sess, "rootkey", sizeLog, NewOptions{Params: "root-params"}),
 	}
 }
 
@@ -117,7 +121,7 @@ func (m *mapCacheTest) stubLeaseSet(err error) {
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Data(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 	const key2 = "key02"
@@ -183,7 +187,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Data(t
 }
 
 func TestMapCache_Do_Call__Get__Found__Returns_Immediately(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 	const key2 = "key02"
@@ -220,7 +224,7 @@ func TestMapCache_Do_Call__Get__Found__Returns_Immediately(t *testing.T) {
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Not_Found(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 	const key2 = "key02"
@@ -273,7 +277,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Not_Fo
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Get_Lower__Found(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 	const key2 = "key02"
@@ -330,15 +334,24 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Get_Lower__Found(t *
 	setCalls := m.pipe.LeaseSetCalls()
 	assert.Equal(t, 1, len(setCalls))
 	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
-	assert.Equal(t, marshalCacheBucket(CacheBucketContent{
-		OriginSizeLogVersion: 50,
-		Entries:              entries,
-	}), setCalls[0].Data)
+
 	assert.Equal(t, uint64(887), setCalls[0].Cas)
+
+	bucket, err := unmarshalCacheBucket(setCalls[0].Data)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, CacheBucketContent{
+		OriginSizeLogVersion: 50,
+		Entries: []Entry{
+			{
+				Key:  key1,
+				Data: []byte("key data 01"),
+			},
+		},
+	}, bucket)
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get_Found(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 	const key2 = "key02"
@@ -392,7 +405,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get_Found(t *testing.T) {
 }
 
 func TestMapCache_Do_Call__Get__Error(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 
@@ -416,7 +429,7 @@ func TestMapCache_Do_Call__Get__Error(t *testing.T) {
 }
 
 func TestMapCache_Do_Call__Get_Found_But_Invalid_Data(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 
@@ -443,7 +456,7 @@ func TestMapCache_Do_Call__Get_Found_But_Invalid_Data(t *testing.T) {
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get_Error(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 
@@ -463,7 +476,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get_Error(t *testing.T) {
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get_Data_Invalid(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 
@@ -487,7 +500,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get_Data_Invalid(t *testing.
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Get_Lower_Error(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 
@@ -510,7 +523,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Get_Lower_Error(t 
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Get_Lower_With_Invalid_Data(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 
@@ -537,8 +550,91 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Get_Lower_With_Inv
 	assert.Equal(t, GetResponse{}, resp)
 }
 
+func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Cache_Get__Filter_Hash_Range(t *testing.T) {
+	m := newMapCacheTest(SizeLog{
+		Current:  1,
+		Previous: 0,
+		Version:  71,
+	})
+
+	const key1 = "key01"
+	const key2 = "key02"
+	const key3 = "key03"
+	const key4 = "key05"
+
+	entry1 := Entry{
+		Key:  key1,
+		Data: []byte("key data 01"),
+	}
+	entry2 := Entry{
+		Key:  key2,
+		Data: []byte("key data 02"),
+	}
+	entry3 := Entry{
+		Key:  key3,
+		Data: []byte("key data 03"),
+	}
+	entry4 := Entry{
+		Key:  key4,
+		Data: []byte("key data 04"),
+	}
+
+	entries := []Entry{
+		entry1, entry2, entry3, entry4,
+	}
+
+	m.stubGetMulti(
+		memproxy.GetResponse{
+			Found: false,
+		},
+		memproxy.GetResponse{
+			Found: true,
+			Data: marshalCacheBucket(CacheBucketContent{
+				OriginSizeLogVersion: 70,
+				Entries:              entries,
+			}),
+		},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	m.stubLeaseSet(nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, GetResponse{
+		Found: true,
+		Data:  []byte("key data 01"),
+	}, resp)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 1, len(setCalls))
+	assert.Equal(t, "rootkey:1:"+computeBucketKeyString(key1, 1), setCalls[0].Key)
+	assert.Equal(t, uint64(4455), setCalls[0].Cas)
+
+	assert.Equal(t, "8", computeBucketKeyString(key1, 1))
+	assert.Equal(t, "0", computeBucketKeyString(key2, 1))
+	assert.Equal(t, "0", computeBucketKeyString(key3, 1))
+	assert.Equal(t, "8", computeBucketKeyString(key4, 1))
+
+	cacheBucket, err := unmarshalCacheBucket(setCalls[0].Data)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, CacheBucketContent{
+		OriginSizeLogVersion: 70,
+		Entries: []Entry{
+			entry1, entry4,
+		},
+	}, cacheBucket)
+}
+
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_GetBucket_Error(t *testing.T) {
-	m := newMapCacheTest()
+	m := newMapCacheTest(defaultSizeLog())
 
 	const key1 = "key01"
 
@@ -561,3 +657,5 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_GetBucket_Error(t 
 	assert.Equal(t, errors.New("get bucket error"), err)
 	assert.Equal(t, GetResponse{}, resp)
 }
+
+// TODO Test Multiple & Pipelining

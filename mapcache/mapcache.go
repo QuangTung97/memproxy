@@ -7,6 +7,7 @@ import (
 
 //go:generate moq -rm -out mapcache_mocks_test.go . Filler
 
+// NewOptions options to call Get Bucket
 type NewOptions struct {
 	Params interface{}
 }
@@ -24,7 +25,7 @@ type Provider interface {
 // MapCache for handling big hash tables in memcached
 type MapCache interface {
 	Get(key string, options GetOptions) func() (GetResponse, error)
-	DeleteKey(key string, options DeleteKeyOptions) string
+	DeleteKeys(key string, options DeleteKeyOptions) []string
 }
 
 // Filler ...

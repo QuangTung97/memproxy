@@ -7,7 +7,6 @@ import (
 
 func computeBucketKeyString(key string, sizeLog uint64) string {
 	return computeBucketKey(hashFunc(key), sizeLog)
-
 }
 
 func TestComputeBucketKey(t *testing.T) {

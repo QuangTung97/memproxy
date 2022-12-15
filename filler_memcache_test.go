@@ -90,7 +90,9 @@ func (m *fillerMemcacheTest) stubLeaseGetMulti(results ...leaseGetResult) {
 }
 
 func (m *fillerMemcacheTest) stubLeaseSet() {
-	m.originPipe.LeaseSetFunc = func(key string, data []byte, cas uint64, options LeaseSetOptions) func() (LeaseSetResponse, error) {
+	m.originPipe.LeaseSetFunc = func(
+		key string, data []byte, cas uint64, options LeaseSetOptions,
+	) func() (LeaseSetResponse, error) {
 		return func() (LeaseSetResponse, error) {
 			return LeaseSetResponse{}, nil
 		}
