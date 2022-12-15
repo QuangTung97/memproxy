@@ -89,7 +89,8 @@ type DeleteResponse struct {
 
 // FillResponse fill response
 type FillResponse struct {
-	Data []byte
+	Found bool // TODO
+	Data  []byte
 }
 
 // Filler for filling memcache contents

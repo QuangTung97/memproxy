@@ -68,8 +68,9 @@ type fillParams struct {
 	resp      GetResponse
 	err       error
 
-	lowKeyGetFn func() (memproxy.GetResponse, error)
-	newOptions  NewOptions
+	lowKeyGetFn  func() (memproxy.GetResponse, error)
+	lowKeyGetFn2 func() (memproxy.GetResponse, error)
+	newOptions   NewOptions
 }
 
 // Get ...
@@ -114,8 +115,16 @@ func (p *mapCacheImpl) Get(
 			FillParams: params,
 		})
 
-		lowKey := p.getCacheKey(keyHash, p.sizeLog.Previous)
-		params.lowKeyGetFn = p.pipeline.Get(lowKey, memproxy.GetOptions{}) // TODO From 2 Buckets
+		if p.sizeLog.Previous == p.sizeLog.Current+1 {
+			lowKey1 := p.getCacheKey(hashRange.Begin, p.sizeLog.Previous)
+			lowKey2 := p.getCacheKey(hashRange.End, p.sizeLog.Previous)
+
+			params.lowKeyGetFn = p.pipeline.Get(lowKey1, memproxy.GetOptions{})
+			params.lowKeyGetFn2 = p.pipeline.Get(lowKey2, memproxy.GetOptions{})
+		} else {
+			lowKey := p.getCacheKey(keyHash, p.sizeLog.Previous)
+			params.lowKeyGetFn = p.pipeline.Get(lowKey, memproxy.GetOptions{})
+		}
 
 		p.sess.AddNextCall(func() {
 			var leaseGetResp memproxy.LeaseGetResponse
@@ -189,6 +198,87 @@ func filterEntriesByHashRange(entries []Entry, hashRange HashRange) []Entry {
 	return result
 }
 
+func (*memproxyFiller) handleSingleLowerBucket(
+	params *fillParams,
+	completeFn func(resp memproxy.FillResponse, err error),
+	doComplete func(entries []Entry, sizeLogVersion uint64),
+) bool {
+	cacheGetResp, err := params.lowKeyGetFn()
+	if err != nil {
+		completeFn(memproxy.FillResponse{}, err)
+		return true
+	}
+
+	if !cacheGetResp.Found {
+		return false
+	}
+
+	bucket, err := unmarshalCacheBucket(cacheGetResp.Data)
+	if err != nil {
+		completeFn(memproxy.FillResponse{}, err)
+		return true
+	}
+
+	// TODO Check Origin Size Version
+
+	entries := filterEntriesByHashRange(bucket.Entries, params.hashRange)
+	doComplete(entries, bucket.OriginSizeLogVersion)
+	return true
+}
+
+func (*memproxyFiller) handleTwoLowerBuckets(
+	params *fillParams,
+	completeFn func(resp memproxy.FillResponse, err error),
+	doComplete func(entries []Entry, sizeLogVersion uint64),
+) bool {
+	getCacheResp1, err := params.lowKeyGetFn()
+	if err != nil {
+		// TODO
+		return true
+	}
+
+	getCacheResp2, err := params.lowKeyGetFn2()
+	if err != nil {
+		// TODO
+		return true
+	}
+
+	// TODO
+	// TODO Check Size Equal
+	if !getCacheResp1.Found {
+		return false
+	}
+
+	// TODO Second Not Found
+
+	bucket1, err := unmarshalCacheBucket(getCacheResp1.Data)
+	if err != nil {
+		// TODO
+		return true
+	}
+
+	bucket2, err := unmarshalCacheBucket(getCacheResp2.Data)
+	if err != nil {
+		// TODO
+		return true
+	}
+
+	entries := append(bucket1.Entries, bucket2.Entries...)
+	doComplete(entries, bucket1.OriginSizeLogVersion)
+	return true
+}
+
+func (f *memproxyFiller) handleLowerBuckets(
+	params *fillParams,
+	completeFn func(resp memproxy.FillResponse, err error),
+	doComplete func(entries []Entry, sizeLogVersion uint64),
+) bool {
+	if params.lowKeyGetFn2 != nil {
+		return f.handleTwoLowerBuckets(params, completeFn, doComplete)
+	}
+	return f.handleSingleLowerBucket(params, completeFn, doComplete)
+}
+
 func (f *memproxyFiller) Fill(
 	ctx context.Context, p interface{}, _ string,
 	completeFn func(resp memproxy.FillResponse, err error),
@@ -205,23 +295,8 @@ func (f *memproxyFiller) Fill(
 		}, nil)
 	}
 
-	cacheGetResp, err := params.lowKeyGetFn()
-	if err != nil {
-		completeFn(memproxy.FillResponse{}, err)
-		return
-	}
-
-	if cacheGetResp.Found {
-		bucket, err := unmarshalCacheBucket(cacheGetResp.Data)
-		if err != nil {
-			completeFn(memproxy.FillResponse{}, err)
-			return
-		}
-
-		// TODO Check Origin Size Version
-
-		entries := filterEntriesByHashRange(bucket.Entries, params.hashRange)
-		doComplete(entries, bucket.OriginSizeLogVersion)
+	finished := f.handleLowerBuckets(params, completeFn, doComplete)
+	if finished {
 		return
 	}
 
