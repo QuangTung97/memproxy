@@ -70,7 +70,7 @@ func (p *fillerPipelineImpl) LeaseGet(key string, options LeaseGetOptions) func(
 		if resp.Status == LeaseGetStatusLeaseGranted {
 			completeFn := func(fillResp FillResponse, fillErr error) {
 				err = fillErr
-				if err != nil { // TODO Delete Pending Lease
+				if err != nil {
 					resp = LeaseGetResponse{}
 					p.Pipeline.Delete(key, DeleteOptions{})
 					return
