@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/QuangTung97/memproxy"
 	"strconv"
+	"strings"
 )
 
 type providerImpl struct {
@@ -43,9 +44,20 @@ type mapCacheImpl struct {
 	options  NewOptions
 }
 
-func (p *mapCacheImpl) getCacheKey(keyHash uint64, sizeLog uint64) string {
+func (p *mapCacheImpl) getCacheKey(keyHash uint64, sizeLog uint64, version uint64) string {
 	sizeLogStr := strconv.FormatUint(sizeLog, 10)
-	return p.rootKey + ":" + sizeLogStr + ":" + computeBucketKey(keyHash, sizeLog)
+	sizeLogVersion := strconv.FormatUint(version, 10)
+
+	var buf strings.Builder
+	buf.WriteString(p.rootKey)
+	buf.WriteString(":")
+	buf.WriteString(sizeLogStr)
+	buf.WriteString(":")
+	buf.WriteString(sizeLogVersion)
+	buf.WriteString(":")
+	buf.WriteString(computeBucketKey(keyHash, sizeLog))
+
+	return buf.String()
 }
 
 func findEntryInList(entries []Entry, key string) (Entry, bool) {
@@ -73,13 +85,34 @@ type fillParams struct {
 	newOptions   NewOptions
 }
 
+func doGetHandleLeaseResponse(params *fillParams, leaseGetFn func() (memproxy.LeaseGetResponse, error)) {
+	leaseGetResp, err := leaseGetFn()
+	if err != nil {
+		params.setError(err)
+		return
+	}
+
+	if params.completed {
+		return
+	}
+
+	var bucket CacheBucketContent
+	bucket, err = unmarshalCacheBucket(leaseGetResp.Data)
+	if err != nil {
+		params.setError(err)
+		return
+	}
+
+	params.setResponse(bucket.Entries)
+}
+
 // Get ...
 func (p *mapCacheImpl) Get(
 	key string, _ GetOptions,
 ) func() (GetResponse, error) {
 	keyHash := hashFunc(key)
 
-	highKey := p.getCacheKey(keyHash, p.sizeLog.Current)
+	highKey := p.getCacheKey(keyHash, p.sizeLog.Current, p.sizeLog.Version)
 	fn := p.pipeline.Get(highKey, memproxy.GetOptions{})
 
 	hashRange := computeHashRange(keyHash, p.sizeLog.Current)
@@ -116,36 +149,18 @@ func (p *mapCacheImpl) Get(
 		})
 
 		if p.sizeLog.Previous == p.sizeLog.Current+1 {
-			lowKey1 := p.getCacheKey(hashRange.Begin, p.sizeLog.Previous)
-			lowKey2 := p.getCacheKey(hashRange.End, p.sizeLog.Previous)
+			lowKey1 := p.getCacheKey(hashRange.Begin, p.sizeLog.Previous, p.sizeLog.Version-1)
+			lowKey2 := p.getCacheKey(hashRange.End, p.sizeLog.Previous, p.sizeLog.Version-1)
 
 			params.lowKeyGetFn = p.pipeline.Get(lowKey1, memproxy.GetOptions{})
 			params.lowKeyGetFn2 = p.pipeline.Get(lowKey2, memproxy.GetOptions{})
 		} else {
-			lowKey := p.getCacheKey(keyHash, p.sizeLog.Previous)
+			lowKey := p.getCacheKey(keyHash, p.sizeLog.Previous, p.sizeLog.Version-1)
 			params.lowKeyGetFn = p.pipeline.Get(lowKey, memproxy.GetOptions{})
 		}
 
 		p.sess.AddNextCall(func() {
-			var leaseGetResp memproxy.LeaseGetResponse
-			leaseGetResp, err = leaseGetFn()
-			if err != nil {
-				params.setError(err)
-				return
-			}
-
-			if params.completed {
-				return
-			}
-
-			var bucket CacheBucketContent
-			bucket, err = unmarshalCacheBucket(leaseGetResp.Data)
-			if err != nil {
-				params.setError(err)
-				return
-			}
-
-			params.setResponse(bucket.Entries)
+			doGetHandleLeaseResponse(params, leaseGetFn)
 		})
 	})
 
@@ -244,7 +259,7 @@ func (*memproxyFiller) handleTwoLowerBuckets(
 	}
 
 	// TODO
-	// TODO Check Size Equal
+	// TODO Check Size Log Version Correct
 	if !getCacheResp1.Found {
 		return false
 	}

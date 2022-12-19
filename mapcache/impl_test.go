@@ -163,16 +163,16 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Data(t
 
 	calls := m.pipe.GetCalls()
 	assert.Equal(t, 2, len(calls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
-	assert.Equal(t, "rootkey:7:"+computeBucketKeyString(key1, 7), calls[1].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), calls[0].Key)
+	assert.Equal(t, "rootkey:7:50:"+computeBucketKeyString(key1, 7), calls[1].Key)
 
 	leaseGetCalls := m.pipe.LeaseGetCalls()
 	assert.Equal(t, 1, len(leaseGetCalls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
 
 	setCalls := m.pipe.LeaseSetCalls()
 	assert.Equal(t, 1, len(setCalls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
 	assert.Equal(t, marshalCacheBucket(CacheBucketContent{
 		OriginSizeLogVersion: 8,
 		Entries:              entries,
@@ -220,7 +220,7 @@ func TestMapCache_Do_Call__Get__Found__Returns_Immediately(t *testing.T) {
 
 	calls := m.pipe.GetCalls()
 	assert.Equal(t, 1, len(calls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), calls[0].Key)
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Not_Found(t *testing.T) {
@@ -259,16 +259,16 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Not_Fo
 
 	calls := m.pipe.GetCalls()
 	assert.Equal(t, 2, len(calls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
-	assert.Equal(t, "rootkey:7:"+computeBucketKeyString(key1, 7), calls[1].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), calls[0].Key)
+	assert.Equal(t, "rootkey:7:50:"+computeBucketKeyString(key1, 7), calls[1].Key)
 
 	leaseGetCalls := m.pipe.LeaseGetCalls()
 	assert.Equal(t, 1, len(leaseGetCalls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
 
 	setCalls := m.pipe.LeaseSetCalls()
 	assert.Equal(t, 1, len(setCalls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
 	assert.Equal(t, marshalCacheBucket(CacheBucketContent{
 		OriginSizeLogVersion: 8,
 		Entries:              entries,
@@ -324,16 +324,16 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Get_Lower__Found(t *
 
 	calls := m.pipe.GetCalls()
 	assert.Equal(t, 2, len(calls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
-	assert.Equal(t, "rootkey:7:"+computeBucketKeyString(key1, 7), calls[1].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), calls[0].Key)
+	assert.Equal(t, "rootkey:7:50:"+computeBucketKeyString(key1, 7), calls[1].Key)
 
 	leaseGetCalls := m.pipe.LeaseGetCalls()
 	assert.Equal(t, 1, len(leaseGetCalls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
 
 	setCalls := m.pipe.LeaseSetCalls()
 	assert.Equal(t, 1, len(setCalls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
 
 	assert.Equal(t, uint64(887), setCalls[0].Cas)
 
@@ -393,12 +393,12 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get_Found(t *testing.T) {
 
 	calls := m.pipe.GetCalls()
 	assert.Equal(t, 2, len(calls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
-	assert.Equal(t, "rootkey:7:"+computeBucketKeyString(key1, 7), calls[1].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), calls[0].Key)
+	assert.Equal(t, "rootkey:7:50:"+computeBucketKeyString(key1, 7), calls[1].Key)
 
 	leaseGetCalls := m.pipe.LeaseGetCalls()
 	assert.Equal(t, 1, len(leaseGetCalls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), leaseGetCalls[0].Key)
 
 	setCalls := m.pipe.LeaseSetCalls()
 	assert.Equal(t, 0, len(setCalls))
@@ -419,7 +419,7 @@ func TestMapCache_Do_Call__Get__Error(t *testing.T) {
 
 	calls := m.pipe.GetCalls()
 	assert.Equal(t, 1, len(calls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), calls[0].Key)
 
 	leaseGetCalls := m.pipe.LeaseGetCalls()
 	assert.Equal(t, 0, len(leaseGetCalls))
@@ -446,7 +446,7 @@ func TestMapCache_Do_Call__Get_Found_But_Invalid_Data(t *testing.T) {
 
 	calls := m.pipe.GetCalls()
 	assert.Equal(t, 1, len(calls))
-	assert.Equal(t, "rootkey:8:"+computeBucketKeyString(key1, 8), calls[0].Key)
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), calls[0].Key)
 
 	leaseGetCalls := m.pipe.LeaseGetCalls()
 	assert.Equal(t, 0, len(leaseGetCalls))
@@ -615,7 +615,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Cache_Get__Filter_
 
 	setCalls := m.pipe.LeaseSetCalls()
 	assert.Equal(t, 1, len(setCalls))
-	assert.Equal(t, "rootkey:1:"+computeBucketKeyString(key1, 1), setCalls[0].Key)
+	assert.Equal(t, "rootkey:1:71:"+computeBucketKeyString(key1, 1), setCalls[0].Key)
 	assert.Equal(t, uint64(4455), setCalls[0].Cas)
 
 	assert.Equal(t, "8", computeBucketKeyString(key1, 1))
@@ -706,9 +706,9 @@ func TestMapCache_Do_Call__Get__Not_Found__SizeLog_Bigger__Do_Lease_Get__And_Get
 
 	assert.Equal(t, "f6", computeBucketKey(hash, 7))
 
-	assert.Equal(t, "rootkey:6:f4", getCalls[0].Key)
-	assert.Equal(t, "rootkey:7:f4", getCalls[1].Key)
-	assert.Equal(t, "rootkey:7:f6", getCalls[2].Key)
+	assert.Equal(t, "rootkey:6:61:f4", getCalls[0].Key)
+	assert.Equal(t, "rootkey:7:60:f4", getCalls[1].Key)
+	assert.Equal(t, "rootkey:7:60:f6", getCalls[2].Key)
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Cache_Get__Combine_Buckets(t *testing.T) {
@@ -783,7 +783,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Cache_Get__Combine
 
 	setCalls := m.pipe.LeaseSetCalls()
 	assert.Equal(t, 1, len(setCalls))
-	assert.Equal(t, "rootkey:0:", setCalls[0].Key)
+	assert.Equal(t, "rootkey:0:71:", setCalls[0].Key)
 	assert.Equal(t, uint64(4455), setCalls[0].Cas)
 
 	assert.Equal(t, "8", computeBucketKeyString(key1, 1))
@@ -793,9 +793,9 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Cache_Get__Combine
 
 	getCalls := m.pipe.GetCalls()
 	assert.Equal(t, 3, len(getCalls))
-	assert.Equal(t, "rootkey:0:", getCalls[0].Key)
-	assert.Equal(t, "rootkey:1:0", getCalls[1].Key)
-	assert.Equal(t, "rootkey:1:8", getCalls[2].Key)
+	assert.Equal(t, "rootkey:0:71:", getCalls[0].Key)
+	assert.Equal(t, "rootkey:1:70:0", getCalls[1].Key)
+	assert.Equal(t, "rootkey:1:70:8", getCalls[2].Key)
 
 	cacheBucket, err := unmarshalCacheBucket(setCalls[0].Data)
 	assert.Equal(t, nil, err)
