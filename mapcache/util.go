@@ -63,11 +63,11 @@ func parseIntNumber(data []byte) ([]byte, int, error) {
 	return data[n:], int(num), nil
 }
 
-const version = 1
+const cacheBucketVersion = 1
 
 func marshalCacheBucket(bucket CacheBucketContent) []byte {
 	var buf bytes.Buffer
-	buf.WriteByte(version)
+	buf.WriteByte(cacheBucketVersion)
 
 	var origin [8]byte
 	binary.LittleEndian.PutUint64(origin[:], bucket.OriginSizeLogVersion)
@@ -98,7 +98,7 @@ func unmarshalCacheBucket(data []byte) (CacheBucketContent, error) {
 		return CacheBucketContent{}, ErrMissingBucketContent
 	}
 
-	if data[0] != version {
+	if data[0] != cacheBucketVersion {
 		return CacheBucketContent{}, ErrInvalidBucketContentVersion
 	}
 	data = data[1:]

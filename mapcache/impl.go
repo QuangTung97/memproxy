@@ -44,7 +44,7 @@ type mapCacheImpl struct {
 	options  NewOptions
 }
 
-func (p *mapCacheImpl) getCacheKey(keyHash uint64, sizeLog uint64, version uint64) string {
+func (p *mapCacheImpl) getBucketCacheKey(keyHash uint64, sizeLog uint64, version uint64) string {
 	sizeLogStr := strconv.FormatUint(sizeLog, 10)
 	sizeLogVersion := strconv.FormatUint(version, 10)
 
@@ -58,6 +58,14 @@ func (p *mapCacheImpl) getCacheKey(keyHash uint64, sizeLog uint64, version uint6
 	buf.WriteString(computeBucketKey(keyHash, sizeLog))
 
 	return buf.String()
+}
+
+func (p *mapCacheImpl) getHighCacheKey(keyHash uint64) string {
+	return p.getBucketCacheKey(keyHash, p.sizeLog.Current, p.sizeLog.Version)
+}
+
+func (p *mapCacheImpl) getLowCacheKey(keyHash uint64) string {
+	return p.getBucketCacheKey(keyHash, p.sizeLog.Previous, p.sizeLog.Version-1)
 }
 
 func findEntryInList(entries []Entry, key string) (Entry, bool) {
@@ -114,7 +122,7 @@ func (p *mapCacheImpl) Get(
 ) func() (GetResponse, error) {
 	keyHash := hashFunc(key)
 
-	highKey := p.getCacheKey(keyHash, p.sizeLog.Current, p.sizeLog.Version)
+	highKey := p.getHighCacheKey(keyHash)
 	fn := p.pipeline.Get(highKey, memproxy.GetOptions{})
 
 	hashRange := computeHashRange(keyHash, p.sizeLog.Current)
@@ -153,13 +161,13 @@ func (p *mapCacheImpl) Get(
 		})
 
 		if p.sizeLog.Previous == p.sizeLog.Current+1 {
-			lowKey1 := p.getCacheKey(hashRange.Begin, p.sizeLog.Previous, p.sizeLog.Version-1)
-			lowKey2 := p.getCacheKey(hashRange.End, p.sizeLog.Previous, p.sizeLog.Version-1)
+			lowKey1 := p.getLowCacheKey(hashRange.Begin)
+			lowKey2 := p.getLowCacheKey(hashRange.End)
 
 			params.lowKeyGetFn = p.pipeline.Get(lowKey1, memproxy.GetOptions{})
 			params.lowKeyGetFn2 = p.pipeline.Get(lowKey2, memproxy.GetOptions{})
 		} else {
-			lowKey := p.getCacheKey(keyHash, p.sizeLog.Previous, p.sizeLog.Version-1)
+			lowKey := p.getLowCacheKey(keyHash)
 			params.lowKeyGetFn = p.pipeline.Get(lowKey, memproxy.GetOptions{})
 		}
 
@@ -176,9 +184,20 @@ func (p *mapCacheImpl) Get(
 
 // DeleteKeys ...
 func (p *mapCacheImpl) DeleteKeys(
-	key string, options DeleteKeyOptions,
+	key string, _ DeleteKeyOptions,
 ) []string {
-	return nil
+	keyHash := hashFunc(key)
+
+	result := make([]string, 0, 3)
+	result = append(result, p.getHighCacheKey(keyHash))
+	if p.sizeLog.Previous > p.sizeLog.Current {
+		hashRange := computeHashRange(keyHash, p.sizeLog.Current)
+		result = append(result, p.getLowCacheKey(hashRange.Begin))
+		result = append(result, p.getLowCacheKey(hashRange.End))
+	} else {
+		result = append(result, p.getLowCacheKey(keyHash))
+	}
+	return result
 }
 
 type memproxyFiller struct {
@@ -253,13 +272,13 @@ func (*memproxyFiller) handleSingleLowerBucket(
 	cacheGetResp, err := params.lowKeyGetFn()
 	if err != nil {
 		completeFn(memproxy.FillResponse{}, err)
-		return
+		return false
 	}
 
 	result, err := params.isValidResponse(cacheGetResp)
 	if err != nil {
 		completeFn(memproxy.FillResponse{}, err)
-		return
+		return false
 	}
 	if result.doFill {
 		return true
@@ -278,19 +297,19 @@ func (*memproxyFiller) handleTwoLowerBuckets(
 	getCacheResp1, err := params.lowKeyGetFn()
 	if err != nil {
 		completeFn(memproxy.FillResponse{}, err)
-		return
+		return false
 	}
 
 	getCacheResp2, err := params.lowKeyGetFn2()
 	if err != nil {
 		completeFn(memproxy.FillResponse{}, err)
-		return
+		return false
 	}
 
 	result1, err := params.isValidResponse(getCacheResp1)
 	if err != nil {
 		completeFn(memproxy.FillResponse{}, err)
-		return
+		return false
 	}
 	if result1.doFill {
 		return true
@@ -299,7 +318,7 @@ func (*memproxyFiller) handleTwoLowerBuckets(
 	result2, err := params.isValidResponse(getCacheResp2)
 	if err != nil {
 		completeFn(memproxy.FillResponse{}, err)
-		return
+		return false
 	}
 	if result2.doFill {
 		return true

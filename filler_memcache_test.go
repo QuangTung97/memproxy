@@ -40,6 +40,10 @@ func newFillerMemcacheTest() *fillerMemcacheTest {
 		return originPipe
 	}
 
+	originPipe.DeleteFunc = func(key string, options DeleteOptions) func() (DeleteResponse, error) {
+		return nil
+	}
+
 	var calls []func()
 	sess.AddNextCallFunc = func(fn func()) {
 		calls = append(calls, fn)
@@ -329,6 +333,8 @@ func TestFillerMemcache__Get_Granted__Multi(t *testing.T) {
 
 	assert.Equal(t, []interface{}{key1, key2, finish, finish}, getCalls)
 	assert.Equal(t, []interface{}{key1, key2}, setCalls)
+
+	assert.Equal(t, 0, len(m.originPipe.DeleteCalls()))
 }
 
 func TestFillerMemcache__Get_Returns_Error(t *testing.T) {
@@ -341,6 +347,8 @@ func TestFillerMemcache__Get_Returns_Error(t *testing.T) {
 	resp, err := m.pipe.LeaseGet(key1, LeaseGetOptions{})()
 	assert.Equal(t, errors.New("lease get error"), err)
 	assert.Equal(t, LeaseGetResponse{}, resp)
+
+	assert.Equal(t, 0, len(m.originPipe.DeleteCalls()))
 }
 
 func TestFillerMemcache__Get_Granted__Fill_Error(t *testing.T) {
@@ -361,6 +369,10 @@ func TestFillerMemcache__Get_Granted__Fill_Error(t *testing.T) {
 
 	setCalls := m.originPipe.LeaseSetCalls()
 	assert.Equal(t, 0, len(setCalls))
+
+	deleteCalls := m.originPipe.DeleteCalls()
+	assert.Equal(t, 1, len(deleteCalls))
+	assert.Equal(t, key1, deleteCalls[0].Key)
 }
 
 func TestFillerMemcache__LeaseSet(t *testing.T) {

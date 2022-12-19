@@ -38,6 +38,10 @@ func newMapCacheTest(sizeLog SizeLog) *mapCacheTest {
 	client := &memproxy.MemcacheMock{}
 	pipe := &memproxy.PipelineMock{}
 
+	pipe.DeleteFunc = func(key string, options memproxy.DeleteOptions) func() (memproxy.DeleteResponse, error) {
+		return nil
+	}
+
 	client.PipelineFunc = func(ctx context.Context, sess memproxy.Session) memproxy.Pipeline {
 		return pipe
 	}
@@ -520,6 +524,10 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Get_Lower_Error(t 
 
 	assert.Equal(t, errors.New("some get error"), err)
 	assert.Equal(t, GetResponse{}, resp)
+
+	deleteCalls := m.pipe.DeleteCalls()
+	assert.Equal(t, 1, len(deleteCalls))
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), deleteCalls[0].Key)
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Get_Lower_With_Invalid_Data(t *testing.T) {
@@ -548,6 +556,10 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Get_Lower_With_Inv
 
 	assert.Equal(t, ErrMissingSizeLogOrigin, err)
 	assert.Equal(t, GetResponse{}, resp)
+
+	deleteCalls := m.pipe.DeleteCalls()
+	assert.Equal(t, 1, len(deleteCalls))
+	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), deleteCalls[0].Key)
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Cache_Get__Filter_Hash_Range(t *testing.T) {
@@ -631,6 +643,9 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Cache_Get__Filter_
 			entry1, entry4,
 		},
 	}, cacheBucket)
+
+	deleteCalls := m.pipe.DeleteCalls()
+	assert.Equal(t, 0, len(deleteCalls))
 }
 
 func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_GetBucket_Error(t *testing.T) {
@@ -1288,4 +1303,37 @@ func TestMapCache__Two_Lower_Buckets__Second_One_Data_Invalid(t *testing.T) {
 	assert.Equal(t, "rootkey:1:70:8", getCalls[2].Key)
 
 	assert.Equal(t, 0, len(m.filler.GetBucketCalls()))
+}
+
+func TestMapCache_Get_Delete_Keys(t *testing.T) {
+	m := newMapCacheTest(SizeLog{
+		Current:  5,
+		Previous: 4,
+		Version:  71,
+	})
+	const key1 = "KEY01"
+
+	keys := m.mc.DeleteKeys(key1, DeleteKeyOptions{})
+	assert.Equal(t, []string{
+		"rootkey:5:71:" + computeBucketKeyString(key1, 5),
+		"rootkey:4:70:" + computeBucketKeyString(key1, 4),
+	}, keys)
+}
+
+func TestMapCache_Get_Delete_Keys__With_Previous_Higher(t *testing.T) {
+	m := newMapCacheTest(SizeLog{
+		Current:  8,
+		Previous: 9,
+		Version:  71,
+	})
+	const key1 = "KEY01"
+
+	keys := m.mc.DeleteKeys(key1, DeleteKeyOptions{})
+
+	hashRange := computeHashRange(hashFunc(key1), 8)
+	assert.Equal(t, []string{
+		"rootkey:8:71:" + computeBucketKeyString(key1, 8),
+		"rootkey:9:70:" + computeBucketKey(hashRange.Begin, 9),
+		"rootkey:9:70:" + computeBucketKey(hashRange.End, 9),
+	}, keys)
 }
