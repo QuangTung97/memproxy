@@ -74,7 +74,9 @@ type fillParams struct {
 
 	key       string
 	hashRange HashRange
-	sizeLog   uint64
+
+	sizeLog        uint64
+	sizeLogVersion uint64
 
 	completed bool
 	resp      GetResponse
@@ -121,7 +123,9 @@ func (p *mapCacheImpl) Get(
 
 		key:       key,
 		hashRange: hashRange,
-		sizeLog:   p.sizeLog.Current,
+
+		sizeLog:        p.sizeLog.Current,
+		sizeLogVersion: p.sizeLog.Version,
 
 		newOptions: p.options,
 	}
@@ -202,6 +206,34 @@ func (p *fillParams) setError(err error) {
 	p.err = err
 }
 
+type checkValidResult struct {
+	doFill bool
+	bucket CacheBucketContent
+}
+
+func (p *fillParams) isValidResponse(getResp memproxy.GetResponse) (checkValidResult, error) {
+	if !getResp.Found {
+		return checkValidResult{
+			doFill: true,
+		}, nil
+	}
+
+	bucket, err := unmarshalCacheBucket(getResp.Data)
+	if err != nil {
+		return checkValidResult{}, err
+	}
+
+	if bucket.OriginSizeLogVersion != p.sizeLogVersion-1 {
+		return checkValidResult{
+			doFill: true,
+		}, nil
+	}
+
+	return checkValidResult{
+		bucket: bucket,
+	}, nil
+}
+
 func filterEntriesByHashRange(entries []Entry, hashRange HashRange) []Entry {
 	result := make([]Entry, 0, len(entries)/2)
 	for _, e := range entries {
@@ -217,77 +249,72 @@ func (*memproxyFiller) handleSingleLowerBucket(
 	params *fillParams,
 	completeFn func(resp memproxy.FillResponse, err error),
 	doComplete func(entries []Entry, sizeLogVersion uint64),
-) bool {
+) (doFill bool) {
 	cacheGetResp, err := params.lowKeyGetFn()
 	if err != nil {
 		completeFn(memproxy.FillResponse{}, err)
-		return true
+		return
 	}
 
-	if !cacheGetResp.Found {
-		return false
-	}
-
-	bucket, err := unmarshalCacheBucket(cacheGetResp.Data)
+	result, err := params.isValidResponse(cacheGetResp)
 	if err != nil {
 		completeFn(memproxy.FillResponse{}, err)
+		return
+	}
+	if result.doFill {
 		return true
 	}
 
-	// TODO Check Origin Size Version
-
-	entries := filterEntriesByHashRange(bucket.Entries, params.hashRange)
-	doComplete(entries, bucket.OriginSizeLogVersion)
-	return true
+	entries := filterEntriesByHashRange(result.bucket.Entries, params.hashRange)
+	doComplete(entries, result.bucket.OriginSizeLogVersion)
+	return false
 }
 
 func (*memproxyFiller) handleTwoLowerBuckets(
 	params *fillParams,
 	completeFn func(resp memproxy.FillResponse, err error),
 	doComplete func(entries []Entry, sizeLogVersion uint64),
-) bool {
+) (doFill bool) {
 	getCacheResp1, err := params.lowKeyGetFn()
 	if err != nil {
-		// TODO
-		return true
+		completeFn(memproxy.FillResponse{}, err)
+		return
 	}
 
 	getCacheResp2, err := params.lowKeyGetFn2()
 	if err != nil {
-		// TODO
-		return true
+		completeFn(memproxy.FillResponse{}, err)
+		return
 	}
 
-	// TODO
-	// TODO Check Size Log Version Correct
-	if !getCacheResp1.Found {
-		return false
-	}
-
-	// TODO Second Not Found
-
-	bucket1, err := unmarshalCacheBucket(getCacheResp1.Data)
+	result1, err := params.isValidResponse(getCacheResp1)
 	if err != nil {
-		// TODO
+		completeFn(memproxy.FillResponse{}, err)
+		return
+	}
+	if result1.doFill {
 		return true
 	}
 
-	bucket2, err := unmarshalCacheBucket(getCacheResp2.Data)
+	result2, err := params.isValidResponse(getCacheResp2)
 	if err != nil {
-		// TODO
+		completeFn(memproxy.FillResponse{}, err)
+		return
+	}
+	if result2.doFill {
 		return true
 	}
 
-	entries := append(bucket1.Entries, bucket2.Entries...)
-	doComplete(entries, bucket1.OriginSizeLogVersion)
-	return true
+	entries := append(result1.bucket.Entries, result2.bucket.Entries...)
+	doComplete(entries, result1.bucket.OriginSizeLogVersion)
+	return false
 }
 
 func (f *memproxyFiller) handleLowerBuckets(
 	params *fillParams,
 	completeFn func(resp memproxy.FillResponse, err error),
 	doComplete func(entries []Entry, sizeLogVersion uint64),
-) bool {
+) (continuing bool) {
 	if params.lowKeyGetFn2 != nil {
 		return f.handleTwoLowerBuckets(params, completeFn, doComplete)
 	}
@@ -310,8 +337,8 @@ func (f *memproxyFiller) Fill(
 		}, nil)
 	}
 
-	finished := f.handleLowerBuckets(params, completeFn, doComplete)
-	if finished {
+	continuing := f.handleLowerBuckets(params, completeFn, doComplete)
+	if !continuing {
 		return
 	}
 
@@ -322,6 +349,6 @@ func (f *memproxyFiller) Fill(
 			completeFn(memproxy.FillResponse{}, err)
 			return
 		}
-		doComplete(getResp.Entries, params.sizeLog)
+		doComplete(getResp.Entries, params.sizeLogVersion)
 	})
 }

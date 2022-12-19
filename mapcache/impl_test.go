@@ -174,7 +174,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Data(t
 	assert.Equal(t, 1, len(setCalls))
 	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
 	assert.Equal(t, marshalCacheBucket(CacheBucketContent{
-		OriginSizeLogVersion: 8,
+		OriginSizeLogVersion: 51,
 		Entries:              entries,
 	}), setCalls[0].Data)
 	assert.Equal(t, uint64(887), setCalls[0].Cas)
@@ -270,7 +270,7 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Do_Fill__Returns_Not_Fo
 	assert.Equal(t, 1, len(setCalls))
 	assert.Equal(t, "rootkey:8:51:"+computeBucketKeyString(key1, 8), setCalls[0].Key)
 	assert.Equal(t, marshalCacheBucket(CacheBucketContent{
-		OriginSizeLogVersion: 8,
+		OriginSizeLogVersion: 51,
 		Entries:              entries,
 	}), setCalls[0].Data)
 	assert.Equal(t, uint64(887), setCalls[0].Cas)
@@ -806,4 +806,486 @@ func TestMapCache_Do_Call__Get__Not_Found__Do_Lease_Get__Then_Cache_Get__Combine
 			entry2, entry3,
 		},
 	}, cacheBucket)
+}
+
+func TestMapCache__Two_Lower_Buckets__Second_One_Not_Found(t *testing.T) {
+	m := newMapCacheTest(SizeLog{
+		Current:  0,
+		Previous: 1,
+		Version:  71,
+	})
+
+	const key1 = "key01"
+	const key2 = "key02"
+	const key3 = "key03"
+	const key4 = "key05"
+
+	entry1 := Entry{
+		Key:  key1,
+		Data: []byte("key data 01"),
+	}
+	entry2 := Entry{
+		Key:  key2,
+		Data: []byte("key data 02"),
+	}
+	entry3 := Entry{
+		Key:  key3,
+		Data: []byte("key data 03"),
+	}
+	entry4 := Entry{
+		Key:  key4,
+		Data: []byte("key data 04"),
+	}
+
+	m.stubGetMulti(
+		memproxy.GetResponse{
+			Found: false,
+		},
+		memproxy.GetResponse{
+			Found: true,
+			Data: marshalCacheBucket(CacheBucketContent{
+				OriginSizeLogVersion: 70,
+				Entries: []Entry{
+					entry1, entry4,
+				},
+			}),
+		},
+		memproxy.GetResponse{},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	m.stubLeaseSet(nil)
+
+	m.stubFillerGetBucket(GetBucketResponse{
+		Entries: []Entry{
+			entry1, entry2,
+			entry3, entry4,
+		},
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, GetResponse{
+		Found: true,
+		Data:  []byte("key data 01"),
+	}, resp)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 1, len(setCalls))
+	assert.Equal(t, "rootkey:0:71:", setCalls[0].Key)
+	assert.Equal(t, uint64(4455), setCalls[0].Cas)
+
+	assert.Equal(t, "8", computeBucketKeyString(key1, 1))
+	assert.Equal(t, "0", computeBucketKeyString(key2, 1))
+	assert.Equal(t, "0", computeBucketKeyString(key3, 1))
+	assert.Equal(t, "8", computeBucketKeyString(key4, 1))
+
+	getCalls := m.pipe.GetCalls()
+	assert.Equal(t, 3, len(getCalls))
+	assert.Equal(t, "rootkey:0:71:", getCalls[0].Key)
+	assert.Equal(t, "rootkey:1:70:0", getCalls[1].Key)
+	assert.Equal(t, "rootkey:1:70:8", getCalls[2].Key)
+
+	cacheBucket, err := unmarshalCacheBucket(setCalls[0].Data)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, CacheBucketContent{
+		OriginSizeLogVersion: 71,
+		Entries: []Entry{
+			entry1, entry2,
+			entry3, entry4,
+		},
+	}, cacheBucket)
+
+	assert.Equal(t, 1, len(m.filler.GetBucketCalls()))
+	assert.Equal(t, computeHashRange(hashFunc(key1), 0), m.filler.GetBucketCalls()[0].HashRange)
+}
+
+func TestMapCache__Two_Lower_Buckets__First_One_Wrong_Version(t *testing.T) {
+	m := newMapCacheTest(SizeLog{
+		Current:  0,
+		Previous: 1,
+		Version:  71,
+	})
+
+	const key1 = "key01"
+	const key2 = "key02"
+	const key3 = "key03"
+	const key4 = "key05"
+
+	entry1 := Entry{
+		Key:  key1,
+		Data: []byte("key data 01"),
+	}
+	entry2 := Entry{
+		Key:  key2,
+		Data: []byte("key data 02"),
+	}
+	entry3 := Entry{
+		Key:  key3,
+		Data: []byte("key data 03"),
+	}
+	entry4 := Entry{
+		Key:  key4,
+		Data: []byte("key data 04"),
+	}
+
+	m.stubGetMulti(
+		memproxy.GetResponse{
+			Found: false,
+		},
+		memproxy.GetResponse{
+			Found: true,
+			Data: marshalCacheBucket(CacheBucketContent{
+				OriginSizeLogVersion: 69,
+				Entries: []Entry{
+					entry1, entry4,
+				},
+			}),
+		},
+		memproxy.GetResponse{
+			Found: true,
+			Data: marshalCacheBucket(CacheBucketContent{
+				OriginSizeLogVersion: 70,
+				Entries: []Entry{
+					entry2, entry3,
+				},
+			}),
+		},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	m.stubLeaseSet(nil)
+
+	m.stubFillerGetBucket(GetBucketResponse{
+		Entries: []Entry{
+			entry1, entry2,
+			entry3, entry4,
+		},
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, GetResponse{
+		Found: true,
+		Data:  []byte("key data 01"),
+	}, resp)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 1, len(setCalls))
+	assert.Equal(t, "rootkey:0:71:", setCalls[0].Key)
+	assert.Equal(t, uint64(4455), setCalls[0].Cas)
+
+	assert.Equal(t, "8", computeBucketKeyString(key1, 1))
+	assert.Equal(t, "0", computeBucketKeyString(key2, 1))
+	assert.Equal(t, "0", computeBucketKeyString(key3, 1))
+	assert.Equal(t, "8", computeBucketKeyString(key4, 1))
+
+	getCalls := m.pipe.GetCalls()
+	assert.Equal(t, 3, len(getCalls))
+	assert.Equal(t, "rootkey:0:71:", getCalls[0].Key)
+	assert.Equal(t, "rootkey:1:70:0", getCalls[1].Key)
+	assert.Equal(t, "rootkey:1:70:8", getCalls[2].Key)
+
+	cacheBucket, err := unmarshalCacheBucket(setCalls[0].Data)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, CacheBucketContent{
+		OriginSizeLogVersion: 71,
+		Entries: []Entry{
+			entry1, entry2,
+			entry3, entry4,
+		},
+	}, cacheBucket)
+
+	assert.Equal(t, 1, len(m.filler.GetBucketCalls()))
+}
+
+func TestMapCache__Two_Lower_Buckets__Second_One_Wrong_Version(t *testing.T) {
+	m := newMapCacheTest(SizeLog{
+		Current:  0,
+		Previous: 1,
+		Version:  71,
+	})
+
+	const key1 = "key01"
+	const key2 = "key02"
+	const key3 = "key03"
+	const key4 = "key05"
+
+	entry1 := Entry{
+		Key:  key1,
+		Data: []byte("key data 01"),
+	}
+	entry2 := Entry{
+		Key:  key2,
+		Data: []byte("key data 02"),
+	}
+	entry3 := Entry{
+		Key:  key3,
+		Data: []byte("key data 03"),
+	}
+	entry4 := Entry{
+		Key:  key4,
+		Data: []byte("key data 04"),
+	}
+
+	m.stubGetMulti(
+		memproxy.GetResponse{
+			Found: false,
+		},
+		memproxy.GetResponse{
+			Found: true,
+			Data: marshalCacheBucket(CacheBucketContent{
+				OriginSizeLogVersion: 70,
+				Entries: []Entry{
+					entry1, entry4,
+				},
+			}),
+		},
+		memproxy.GetResponse{
+			Found: true,
+			Data: marshalCacheBucket(CacheBucketContent{
+				OriginSizeLogVersion: 68,
+				Entries: []Entry{
+					entry2, entry3,
+				},
+			}),
+		},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	m.stubLeaseSet(nil)
+
+	m.stubFillerGetBucket(GetBucketResponse{
+		Entries: []Entry{
+			entry1, entry2,
+			entry3, entry4,
+		},
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, GetResponse{
+		Found: true,
+		Data:  []byte("key data 01"),
+	}, resp)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 1, len(setCalls))
+	assert.Equal(t, "rootkey:0:71:", setCalls[0].Key)
+	assert.Equal(t, uint64(4455), setCalls[0].Cas)
+
+	assert.Equal(t, "8", computeBucketKeyString(key1, 1))
+	assert.Equal(t, "0", computeBucketKeyString(key2, 1))
+	assert.Equal(t, "0", computeBucketKeyString(key3, 1))
+	assert.Equal(t, "8", computeBucketKeyString(key4, 1))
+
+	getCalls := m.pipe.GetCalls()
+	assert.Equal(t, 3, len(getCalls))
+	assert.Equal(t, "rootkey:0:71:", getCalls[0].Key)
+	assert.Equal(t, "rootkey:1:70:0", getCalls[1].Key)
+	assert.Equal(t, "rootkey:1:70:8", getCalls[2].Key)
+
+	cacheBucket, err := unmarshalCacheBucket(setCalls[0].Data)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, CacheBucketContent{
+		OriginSizeLogVersion: 71,
+		Entries: []Entry{
+			entry1, entry2,
+			entry3, entry4,
+		},
+	}, cacheBucket)
+
+	assert.Equal(t, 1, len(m.filler.GetBucketCalls()))
+}
+
+func TestMapCache__Two_Lower_Buckets__First_One_Get_Error(t *testing.T) {
+	m := newMapCacheTest(SizeLog{
+		Current:  0,
+		Previous: 1,
+		Version:  71,
+	})
+
+	const key1 = "key01"
+
+	m.stubGetMultiErrors(
+		nil,
+		errors.New("some error"),
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, errors.New("some error"), err)
+	assert.Equal(t, GetResponse{}, resp)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 0, len(setCalls))
+
+	getCalls := m.pipe.GetCalls()
+	assert.Equal(t, 3, len(getCalls))
+	assert.Equal(t, "rootkey:0:71:", getCalls[0].Key)
+	assert.Equal(t, "rootkey:1:70:0", getCalls[1].Key)
+	assert.Equal(t, "rootkey:1:70:8", getCalls[2].Key)
+
+	assert.Equal(t, 0, len(m.filler.GetBucketCalls()))
+}
+
+func TestMapCache__Two_Lower_Buckets__Second_One_Get_Error(t *testing.T) {
+	m := newMapCacheTest(SizeLog{
+		Current:  0,
+		Previous: 1,
+		Version:  71,
+	})
+
+	const key1 = "key01"
+
+	m.stubGetMultiErrors(
+		nil,
+		nil,
+		errors.New("some error"),
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, errors.New("some error"), err)
+	assert.Equal(t, GetResponse{}, resp)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 0, len(setCalls))
+
+	getCalls := m.pipe.GetCalls()
+	assert.Equal(t, 3, len(getCalls))
+	assert.Equal(t, "rootkey:0:71:", getCalls[0].Key)
+	assert.Equal(t, "rootkey:1:70:0", getCalls[1].Key)
+	assert.Equal(t, "rootkey:1:70:8", getCalls[2].Key)
+
+	assert.Equal(t, 0, len(m.filler.GetBucketCalls()))
+}
+
+func TestMapCache__Two_Lower_Buckets__First_One_Data_Invalid(t *testing.T) {
+	m := newMapCacheTest(SizeLog{
+		Current:  0,
+		Previous: 1,
+		Version:  71,
+	})
+
+	const key1 = "key01"
+
+	m.stubGetMulti(
+		memproxy.GetResponse{},
+		memproxy.GetResponse{
+			Found: true,
+			Data:  []byte{2},
+		},
+		memproxy.GetResponse{
+			Found: true,
+			Data: marshalCacheBucket(CacheBucketContent{
+				OriginSizeLogVersion: 70,
+			}),
+		},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, ErrInvalidBucketContentVersion, err)
+	assert.Equal(t, GetResponse{}, resp)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 0, len(setCalls))
+
+	getCalls := m.pipe.GetCalls()
+	assert.Equal(t, 3, len(getCalls))
+	assert.Equal(t, "rootkey:0:71:", getCalls[0].Key)
+	assert.Equal(t, "rootkey:1:70:0", getCalls[1].Key)
+	assert.Equal(t, "rootkey:1:70:8", getCalls[2].Key)
+
+	assert.Equal(t, 0, len(m.filler.GetBucketCalls()))
+}
+
+func TestMapCache__Two_Lower_Buckets__Second_One_Data_Invalid(t *testing.T) {
+	m := newMapCacheTest(SizeLog{
+		Current:  0,
+		Previous: 1,
+		Version:  71,
+	})
+
+	const key1 = "key01"
+
+	m.stubGetMulti(
+		memproxy.GetResponse{},
+		memproxy.GetResponse{
+			Found: true,
+			Data: marshalCacheBucket(CacheBucketContent{
+				OriginSizeLogVersion: 70,
+			}),
+		},
+		memproxy.GetResponse{
+			Found: true,
+			Data:  []byte{2},
+		},
+	)
+
+	m.stubLeaseGet(memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusLeaseGranted,
+		CAS:    4455,
+		Data:   nil,
+	}, nil)
+
+	// Check Map Cache Get
+	resp, err := m.mc.Get(key1, GetOptions{})()
+
+	assert.Equal(t, ErrInvalidBucketContentVersion, err)
+	assert.Equal(t, GetResponse{}, resp)
+
+	setCalls := m.pipe.LeaseSetCalls()
+	assert.Equal(t, 0, len(setCalls))
+
+	getCalls := m.pipe.GetCalls()
+	assert.Equal(t, 3, len(getCalls))
+	assert.Equal(t, "rootkey:0:71:", getCalls[0].Key)
+	assert.Equal(t, "rootkey:1:70:0", getCalls[1].Key)
+	assert.Equal(t, "rootkey:1:70:8", getCalls[2].Key)
+
+	assert.Equal(t, 0, len(m.filler.GetBucketCalls()))
 }
