@@ -92,6 +92,12 @@ func TestCouponCollectorExpectation(t *testing.T) {
 
 	result = couponCollectorExpectation(70, 45)
 	assert.Equal(t, 71.18150059191956, result)
+
+	result = couponCollectorExpectation(32, 21)
+	assert.Equal(t, 33.23577121789361, result)
+
+	result = couponCollectorExpectation(16, 11)
+	assert.Equal(t, 17.558330558330557, result)
 }
 
 func TestNearestCouponsCount(t *testing.T) {
@@ -109,4 +115,10 @@ func TestNearestCouponsCount(t *testing.T) {
 
 	k = nearestCouponsCount(32)
 	assert.Equal(t, 20, k)
+
+	k = nearestCouponsCount(16)
+	assert.Equal(t, 10, k)
+
+	k = nearestCouponsCount(8)
+	assert.Equal(t, 5, k)
 }
