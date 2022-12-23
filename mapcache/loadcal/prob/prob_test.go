@@ -230,6 +230,9 @@ func TestFindLowerBound(t *testing.T) {
 	lower = findLowerBoundWithHighProbability(162, 256)
 	assert.Equal(t, 0.6821533604010123, lower)
 
+	lower = findLowerBoundWithHighProbability(163, 256)
+	assert.Equal(t, 0.6835680370871374, lower)
+
 	lower = findLowerBoundWithHighProbability(82, 128)
 	assert.Equal(t, 0.640625, lower)
 
@@ -335,4 +338,52 @@ func TestFindLowerChernoffBound(t *testing.T) {
 
 	bound = findLowerChernoffBoundWithHighProbability(mid, 41)
 	assert.Equal(t, 0.2791786501625013, bound)
+}
+
+func TestComputeLowerUpperBound(t *testing.T) {
+	var result BucketSizeBound
+
+	result = ComputeLowerAndUpperBound(256)
+	assert.Equal(t, BucketSizeBound{
+		Lower: 0.6835680370871374,
+		Upper: 4.32986633242024,
+	}, result)
+
+	result = ComputeLowerAndUpperBound(1024)
+	assert.Equal(t, BucketSizeBound{
+		Lower: 0.6835680370871374,
+		Upper: 4.32986633242024,
+	}, result)
+
+	result = ComputeLowerAndUpperBound(128)
+	assert.Equal(t, BucketSizeBound{
+		Lower: 0.640625,
+		Upper: 4.749235185568182,
+	}, result)
+
+	result = ComputeLowerAndUpperBound(64)
+	assert.Equal(t, BucketSizeBound{
+		Lower: 0.640625,
+		Upper: 5.369282972365251,
+	}, result)
+
+	result = ComputeLowerAndUpperBound(32)
+	assert.Equal(t, BucketSizeBound{
+		Lower: 0.71875,
+		Upper: 5.565217391304348,
+	}, result)
+	assert.Equal(t, 39.344862126984516, couponCollectorExpectation(32, 23))
+
+	result = ComputeLowerAndUpperBound(16)
+	assert.Equal(t, BucketSizeBound{
+		Lower: 0.75,
+		Upper: 5.333333333333333,
+	}, result)
+	assert.Equal(t, 20.758330558330556, couponCollectorExpectation(16, 12))
+
+	result = ComputeLowerAndUpperBound(4)
+	assert.Equal(t, BucketSizeBound{
+		Lower: 0.75,
+		Upper: 5.333333333333333,
+	}, result)
 }

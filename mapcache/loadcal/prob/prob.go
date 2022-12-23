@@ -263,3 +263,30 @@ func findLowerChernoffBoundWithHighProbability(muy float64, buckets float64) flo
 	}
 	return muy - x*muy
 }
+
+// BucketSizeBound ...
+type BucketSizeBound struct {
+	Lower float64
+	Upper float64
+}
+
+// ComputeLowerAndUpperBound ...
+func ComputeLowerAndUpperBound(n int) BucketSizeBound {
+	if n > 256 {
+		n = 256
+	}
+	b := nearestCouponsCount(n) + 1
+
+	if n == 32 {
+		b += 2
+	}
+
+	if n == 16 {
+		b++
+	}
+
+	return BucketSizeBound{
+		Upper: findUpperBoundWithHighProbability(float64(b), float64(n)),
+		Lower: findLowerBoundWithHighProbability(float64(b), float64(n)),
+	}
+}
