@@ -76,14 +76,17 @@ func NewBinomialCalculator(n int, p float64) *BinomialCalculator {
 	}
 }
 
+// Get ...
 func (c *BinomialCalculator) Get(x int) float64 {
 	return c.result[x]
 }
 
+// GreaterOrEqual ...
 func (c *BinomialCalculator) GreaterOrEqual(x int) float64 {
 	return c.greaterOrEqual[x]
 }
 
+// LessOrEqual ...
 func (c *BinomialCalculator) LessOrEqual(x int) float64 {
 	return c.lessOrEqual[x]
 }
@@ -137,3 +140,27 @@ func nTimesHarmonic(n float64) float64 {
 // mean = 0.0
 // deviation = 1.0
 // Ref: https://math.stackexchange.com/questions/988822/normal-distribution-tail-probability-inequality
+
+// For N(muy, dev) => P(X > dev * t) <= e^(-t^2/2)
+
+func computeDeviation(muy float64, b float64, n float64) float64 {
+	return math.Sqrt(muy * (1 - b/n) / b)
+}
+
+func inverseBoundProbability(deviation float64, delta float64) float64 {
+	t := delta / deviation
+	return math.Exp(t * t / 2.0)
+}
+
+func findBoundWithInverseProbability(deviation float64, inverseProb float64) float64 {
+	return math.Sqrt(2*math.Log(inverseProb)) * deviation
+}
+
+const boundRatio = 3.0 / 4.0
+
+func findUpperBoundWithHighProbability(b float64, n float64) float64 {
+	nextBound := 2.0 * math.Pow(2.0, boundRatio)
+	dev := computeDeviation(nextBound, b, n)
+	delta := findBoundWithInverseProbability(dev, 1e9)
+	return nextBound + delta
+}

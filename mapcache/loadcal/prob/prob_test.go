@@ -2,6 +2,7 @@ package prob
 
 import (
 	"github.com/stretchr/testify/assert"
+	"math"
 	"testing"
 )
 
@@ -73,6 +74,9 @@ func TestCouponCollectorExpectation(t *testing.T) {
 	result := couponCollectorExpectation(256, 162)
 	assert.Equal(t, 255.62234821580253, result)
 
+	result = couponCollectorExpectation(256, 163)
+	assert.Equal(t, 258.34575247112167, result)
+
 	result = couponCollectorExpectation(256, 161)
 	assert.Equal(t, 252.92761137369726, result)
 
@@ -98,6 +102,22 @@ func TestCouponCollectorExpectation(t *testing.T) {
 
 	result = couponCollectorExpectation(16, 11)
 	assert.Equal(t, 17.558330558330557, result)
+
+	result = couponCollectorExpectation(4, 3)
+	assert.Equal(t, 4.333333333333333, result)
+
+	result = couponCollectorExpectation(4, 4)
+	assert.Equal(t, 8.333333333333332, result)
+
+	// for 8
+	result = couponCollectorExpectation(8, 8)
+	assert.Equal(t, 21.74285714285714, result)
+
+	result = couponCollectorExpectation(8, 7)
+	assert.Equal(t, 13.742857142857142, result)
+
+	result = couponCollectorExpectation(8, 6)
+	assert.Equal(t, 9.742857142857142, result)
 }
 
 func TestNearestCouponsCount(t *testing.T) {
@@ -121,4 +141,73 @@ func TestNearestCouponsCount(t *testing.T) {
 
 	k = nearestCouponsCount(8)
 	assert.Equal(t, 5, k)
+
+	k = nearestCouponsCount(4)
+	assert.Equal(t, 2, k)
+}
+
+func TestComputeDeviation(t *testing.T) {
+	v := computeDeviation(4.0, 40, 64)
+	assert.Equal(t, 0.19364916731037085, v)
+
+	v = computeDeviation(1.0, 40, 64)
+	assert.Equal(t, 0.09682458365518543, v)
+}
+
+func TestInvBoundProb(t *testing.T) {
+	prob := inverseBoundProbability(computeDeviation(6.0, 162, 4068), 7.5/6.0)
+	assert.Equal(t, 3.4741163323745456e+09, prob)
+
+	prob = inverseBoundProbability(computeDeviation(6.0, 162, 256), 7.5/6.0)
+	assert.Equal(t, 8.888570862965199e+24, prob)
+
+	prob = inverseBoundProbability(computeDeviation(6.0, 162, 16000), 7.5/6.0)
+	assert.Equal(t, 1.7972234377981377e+09, prob)
+
+	delta := findBoundWithInverseProbability(computeDeviation(6.0, 162, 16000), 1e9)
+	assert.Equal(t, 1.2326857990927726, delta)
+
+	prob = inverseBoundProbability(computeDeviation(6.0, 162, 16000), 1.2326857990927726)
+	assert.Equal(t, 1.0000000000000064e+09, prob)
+
+	nextBound := 2.0 * math.Pow(2.0, 3.0/4.0)
+	dev := computeDeviation(nextBound, 162, 100000)
+	delta = findBoundWithInverseProbability(dev, 1e9)
+	assert.Equal(t, 0.9269061678325372, delta)
+	assert.Equal(t, 4.290491828847395, nextBound+delta)
+}
+
+func TestFindUpperBound(t *testing.T) {
+	upper := findUpperBoundWithHighProbability(162, 100000)
+	assert.Equal(t, 4.290491828847395, upper)
+
+	upper = findUpperBoundWithHighProbability(162, 1e9)
+	assert.Equal(t, 4.291243461150992, upper)
+
+	upper = findUpperBoundWithHighProbability(162, 256)
+	assert.Equal(t, 3.925709210583752, upper)
+
+	upper = findUpperBoundWithHighProbability(163, 256)
+	assert.Equal(t, 3.920993449301621, upper)
+
+	upper = findUpperBoundWithHighProbability(81, 128)
+	assert.Equal(t, 4.158548408544493, upper)
+
+	upper = findUpperBoundWithHighProbability(41, 64)
+	assert.Equal(t, 4.469005732030621, upper)
+
+	upper = findUpperBoundWithHighProbability(21, 32)
+	assert.Equal(t, 4.874211987682589, upper)
+
+	upper = findUpperBoundWithHighProbability(11, 16)
+	assert.Equal(t, 5.353681590328888, upper)
+
+	upper = findUpperBoundWithHighProbability(6, 8)
+	assert.Equal(t, 5.773711519045098, upper)
+
+	upper = findUpperBoundWithHighProbability(7, 8)
+	assert.Equal(t, 4.941383400842568, upper)
+
+	upper = findUpperBoundWithHighProbability(3, 4)
+	assert.Equal(t, 6.772018336467316, upper)
 }
