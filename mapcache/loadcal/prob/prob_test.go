@@ -103,6 +103,9 @@ func TestCouponCollectorExpectation(t *testing.T) {
 	result = couponCollectorExpectation(16, 11)
 	assert.Equal(t, 17.558330558330557, result)
 
+	result = couponCollectorExpectation(16, 13)
+	assert.Equal(t, 24.758330558330556, result)
+
 	result = couponCollectorExpectation(4, 3)
 	assert.Equal(t, 4.333333333333333, result)
 
@@ -144,6 +147,9 @@ func TestNearestCouponsCount(t *testing.T) {
 
 	k = nearestCouponsCount(4)
 	assert.Equal(t, 2, k)
+
+	k = nearestCouponsCount(2)
+	assert.Equal(t, 1, k)
 }
 
 func TestComputeDeviation(t *testing.T) {
@@ -190,8 +196,8 @@ func TestFindUpperBound(t *testing.T) {
 	upper = findUpperBoundWithHighProbability(163, 256)
 	assert.Equal(t, 3.920993449301621, upper)
 
-	upper = findUpperBoundWithHighProbability(81, 128)
-	assert.Equal(t, 4.158548408544493, upper)
+	upper = findUpperBoundWithHighProbability(82, 128)
+	assert.Equal(t, 4.145235689289819, upper)
 
 	upper = findUpperBoundWithHighProbability(41, 64)
 	assert.Equal(t, 4.469005732030621, upper)
@@ -202,12 +208,52 @@ func TestFindUpperBound(t *testing.T) {
 	upper = findUpperBoundWithHighProbability(11, 16)
 	assert.Equal(t, 5.353681590328888, upper)
 
+	upper = findUpperBoundWithHighProbability(13, 16)
+	assert.Equal(t, 4.781579366435329, upper)
+
 	upper = findUpperBoundWithHighProbability(6, 8)
-	assert.Equal(t, 5.773711519045098, upper)
+	assert.Equal(t, 5.333333333333333, upper)
 
 	upper = findUpperBoundWithHighProbability(7, 8)
-	assert.Equal(t, 4.941383400842568, upper)
+	assert.Equal(t, 4.571428571428571, upper)
 
 	upper = findUpperBoundWithHighProbability(3, 4)
-	assert.Equal(t, 6.772018336467316, upper)
+	assert.Equal(t, 5.333333333333333, upper)
+}
+
+func TestFindLowerBound(t *testing.T) {
+	var lower float64
+
+	lower = findLowerBoundWithHighProbability(162, 1e9)
+	assert.Equal(t, 0.6376184868978899, lower)
+
+	lower = findLowerBoundWithHighProbability(162, 256)
+	assert.Equal(t, 0.8549664526737641, lower)
+
+	lower = findLowerBoundWithHighProbability(82, 128)
+	assert.Equal(t, 0.7244352274693903, lower)
+
+	lower = findLowerBoundWithHighProbability(41, 64)
+	assert.Equal(t, 0.640625, lower)
+
+	lower = findLowerBoundWithHighProbability(21, 32)
+	assert.Equal(t, 0.65625, lower)
+
+	lower = findLowerBoundWithHighProbability(22, 32)
+	assert.Equal(t, 0.6875, lower)
+
+	lower = findLowerBoundWithHighProbability(13, 16)
+	assert.Equal(t, 0.8125, lower)
+
+	lower = findLowerBoundWithHighProbability(12, 16)
+	assert.Equal(t, 0.75, lower)
+
+	lower = findLowerBoundWithHighProbability(11, 16)
+	assert.Equal(t, 0.6875, lower)
+
+	lower = findLowerBoundWithHighProbability(7, 8)
+	assert.Equal(t, 0.875, lower)
+
+	lower = findLowerBoundWithHighProbability(6, 8)
+	assert.Equal(t, 0.75, lower)
 }

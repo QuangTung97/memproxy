@@ -157,10 +157,32 @@ func findBoundWithInverseProbability(deviation float64, inverseProb float64) flo
 }
 
 const boundRatio = 3.0 / 4.0
+const highProbability = 1e9
 
 func findUpperBoundWithHighProbability(b float64, n float64) float64 {
 	nextBound := 2.0 * math.Pow(2.0, boundRatio)
 	dev := computeDeviation(nextBound, b, n)
-	delta := findBoundWithInverseProbability(dev, 1e9)
-	return nextBound + delta
+	delta := findBoundWithInverseProbability(dev, highProbability)
+	result := nextBound + delta
+
+	secondUpper := 4.0 * n / b
+	if result > secondUpper {
+		return secondUpper
+	}
+
+	return result
+}
+
+func findLowerBoundWithHighProbability(b float64, n float64) float64 {
+	lowerBound := 2.0 / math.Pow(2.0, boundRatio)
+	dev := computeDeviation(lowerBound, b, n)
+	delta := findBoundWithInverseProbability(dev, highProbability)
+	result := lowerBound - delta
+
+	secondLower := 1.0 / n * b
+
+	if result < secondLower {
+		return secondLower
+	}
+	return result
 }
