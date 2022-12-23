@@ -174,13 +174,11 @@ func findUpperBoundWithHighProbability(b float64, n float64) float64 {
 
 func findLowerBoundWithHighProbability(b float64, n float64) float64 {
 	lowerBound := 2.0 / math.Pow(2.0, boundRatio)
-	dev := computeDeviation(lowerBound, b, n)
-	delta := findBoundWithInverseProbability(dev, highProbability)
-	result := lowerBound - delta
+	result := findLowerChernoffBoundWithHighProbability(lowerBound, b)
 
 	secondLower := 1.0 / n * b
 
-	if result < secondLower {
+	if math.IsNaN(result) || result < secondLower {
 		return secondLower
 	}
 	return result
@@ -207,12 +205,12 @@ func findUpperChernoffBoundWithHighProbability(muy float64, buckets float64) flo
 	// (1 + delta) ^ (1 + delta) /  e^delta = root of newMuy (prob) = prob ^ (1 / newMuy)
 
 	newMuy := muy * buckets
-	K := math.Pow(highProbability, 1.0/newMuy)
+	k := math.Pow(highProbability, 1.0/newMuy)
 
 	fn := func(x float64) float64 {
 		a := math.Pow(1+x, 1+x)
 		b := math.Exp(x)
-		return a/b - K
+		return a/b - k
 	}
 
 	dfx := func(x float64) float64 {
@@ -232,4 +230,36 @@ func findUpperChernoffBoundWithHighProbability(muy float64, buckets float64) flo
 		x = x - fn(x)/dfx(x)
 	}
 	return x*muy + muy
+}
+
+func findLowerChernoffBoundWithHighProbability(muy float64, buckets float64) float64 {
+	// equation
+	// (1 - delta) ^ (1 - delta) * e^delta = root of newMuy (prob) = prob ^ (1 / newMuy)
+
+	newMuy := muy * buckets
+	k := math.Pow(highProbability, 1.0/newMuy)
+
+	fn := func(x float64) float64 {
+		a := math.Pow(1-x, 1-x)
+		b := math.Exp(x)
+		return a*b - k
+	}
+
+	dfx := func(x float64) float64 {
+		a := math.Pow(1-x, 1-x)
+		da := -a * (1 + math.Log(1-x))
+
+		b := math.Exp(x)
+		db := b
+
+		return da*b + a*db
+	}
+
+	const numLoop = 20
+
+	x := 0.5
+	for i := 0; i < numLoop; i++ {
+		x = x - fn(x)/dfx(x)
+	}
+	return muy - x*muy
 }
