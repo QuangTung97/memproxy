@@ -185,31 +185,31 @@ func TestInvBoundProb(t *testing.T) {
 
 func TestFindUpperBound(t *testing.T) {
 	upper := findUpperBoundWithHighProbability(162, 100000)
-	assert.Equal(t, 4.290491828847395, upper)
+	assert.Equal(t, 4.332969665681529, upper)
 
 	upper = findUpperBoundWithHighProbability(162, 1e9)
-	assert.Equal(t, 4.291243461150992, upper)
+	assert.Equal(t, 4.332969665681529, upper)
 
 	upper = findUpperBoundWithHighProbability(162, 256)
-	assert.Equal(t, 3.925709210583752, upper)
+	assert.Equal(t, 4.332969665681529, upper)
 
 	upper = findUpperBoundWithHighProbability(163, 256)
-	assert.Equal(t, 3.920993449301621, upper)
+	assert.Equal(t, 4.32986633242024, upper)
 
 	upper = findUpperBoundWithHighProbability(82, 128)
-	assert.Equal(t, 4.145235689289819, upper)
+	assert.Equal(t, 4.749235185568182, upper)
 
 	upper = findUpperBoundWithHighProbability(41, 64)
-	assert.Equal(t, 4.469005732030621, upper)
+	assert.Equal(t, 5.369282972365251, upper)
 
 	upper = findUpperBoundWithHighProbability(21, 32)
-	assert.Equal(t, 4.874211987682589, upper)
+	assert.Equal(t, 6.095238095238095, upper)
 
 	upper = findUpperBoundWithHighProbability(11, 16)
-	assert.Equal(t, 5.353681590328888, upper)
+	assert.Equal(t, 5.818181818181818, upper)
 
 	upper = findUpperBoundWithHighProbability(13, 16)
-	assert.Equal(t, 4.781579366435329, upper)
+	assert.Equal(t, 4.923076923076923, upper)
 
 	upper = findUpperBoundWithHighProbability(6, 8)
 	assert.Equal(t, 5.333333333333333, upper)
@@ -256,4 +256,51 @@ func TestFindLowerBound(t *testing.T) {
 
 	lower = findLowerBoundWithHighProbability(6, 8)
 	assert.Equal(t, 0.75, lower)
+}
+
+func TestUpperChernoffBound(t *testing.T) {
+	var prob float64
+
+	prob = upperChernoffBoundInverseProbability(6.0, 162, 1.5)
+	assert.Equal(t, 1.6296963853891113e+12, prob)
+
+	prob = upperChernoffBoundInverseProbability(6.0, 82, 1.8)
+	assert.Equal(t, 5.97451432177368e+08, prob)
+
+	mid := 2.0 * math.Pow(2.0, boundRatio)
+	prob = upperChernoffBoundInverseProbability(mid, 21, 6.1-mid)
+	assert.Equal(t, 1.4479380695452923e+08, prob)
+
+	delta := 1.5 / 6.0
+	assert.Equal(t, 6.229644421984454e+08, math.Exp(delta*delta/3*162*6))
+}
+
+func TestLowerChernoffBound(t *testing.T) {
+	var prob float64
+
+	prob = lowerChernoffBoundInverseProbability(1.0, 162, 0.5)
+	assert.Equal(t, 6.229072496214558e+10, prob)
+
+	prob = lowerChernoffBoundInverseProbability(1.5, 162, 0.75)
+	assert.Equal(t, 1.5546587591574582e+16, prob)
+}
+
+func TestFindUpperChernoffBound(t *testing.T) {
+	var bound float64
+	bound = findUpperChernoffBoundWithHighProbability(6.0, 162)
+	assert.Equal(t, 7.280918415205209, bound)
+
+	var prob float64
+	prob = upperChernoffBoundInverseProbability(6.0, 162, 7.280918415205209-6.0)
+	assert.Equal(t, 9.999999999999673e+08, prob)
+
+	bound = findUpperChernoffBoundWithHighProbability(4.0, 162)
+	assert.Equal(t, 5.053415509418841, bound)
+
+	prob = upperChernoffBoundInverseProbability(4.0, 162, 5.053415509418841-4.0)
+	assert.Equal(t, 9.99999999999915e+08, prob)
+
+	mid := 2.0 * math.Pow(2.0, boundRatio)
+	bound = findUpperChernoffBoundWithHighProbability(mid, 163)
+	assert.Equal(t, 4.32986633242024, bound)
 }

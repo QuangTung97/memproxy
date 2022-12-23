@@ -152,6 +152,7 @@ func inverseBoundProbability(deviation float64, delta float64) float64 {
 	return math.Exp(t * t / 2.0)
 }
 
+// findBoundWithInverseProbability using normal distribution bound
 func findBoundWithInverseProbability(deviation float64, inverseProb float64) float64 {
 	return math.Sqrt(2*math.Log(inverseProb)) * deviation
 }
@@ -160,10 +161,8 @@ const boundRatio = 3.0 / 4.0
 const highProbability = 1e9
 
 func findUpperBoundWithHighProbability(b float64, n float64) float64 {
-	nextBound := 2.0 * math.Pow(2.0, boundRatio)
-	dev := computeDeviation(nextBound, b, n)
-	delta := findBoundWithInverseProbability(dev, highProbability)
-	result := nextBound + delta
+	upperMuy := 2.0 * math.Pow(2.0, boundRatio)
+	result := findUpperChernoffBoundWithHighProbability(upperMuy, b)
 
 	secondUpper := 4.0 * n / b
 	if result > secondUpper {
@@ -185,4 +184,52 @@ func findLowerBoundWithHighProbability(b float64, n float64) float64 {
 		return secondLower
 	}
 	return result
+}
+
+func upperChernoffBoundInverseProbability(muy float64, b float64, muyDelta float64) float64 {
+	boundDelta := muyDelta / muy
+	div := math.Pow(1+boundDelta, 1+boundDelta) / math.Exp(boundDelta)
+
+	newMuy := muy * b
+	return math.Pow(div, newMuy)
+}
+
+func lowerChernoffBoundInverseProbability(muy float64, b float64, muyDelta float64) float64 {
+	boundDelta := muyDelta / muy
+	div := math.Pow(1-boundDelta, 1-boundDelta) / math.Exp(-boundDelta)
+
+	newMuy := muy * b
+	return math.Pow(div, newMuy)
+}
+
+func findUpperChernoffBoundWithHighProbability(muy float64, buckets float64) float64 {
+	// equation
+	// (1 + delta) ^ (1 + delta) /  e^delta = root of newMuy (prob) = prob ^ (1 / newMuy)
+
+	newMuy := muy * buckets
+	K := math.Pow(highProbability, 1.0/newMuy)
+
+	fn := func(x float64) float64 {
+		a := math.Pow(1+x, 1+x)
+		b := math.Exp(x)
+		return a/b - K
+	}
+
+	dfx := func(x float64) float64 {
+		a := math.Pow(1+x, 1+x)
+		da := a * (1 + math.Log(1+x))
+
+		b := math.Exp(x)
+		db := b
+
+		return (da*b - a*db) / (b * b)
+	}
+
+	const numLoop = 20
+
+	x := 1.0
+	for i := 0; i < numLoop; i++ {
+		x = x - fn(x)/dfx(x)
+	}
+	return x*muy + muy
 }
