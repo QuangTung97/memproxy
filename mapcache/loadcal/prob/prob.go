@@ -157,12 +157,16 @@ func findBoundWithInverseProbability(deviation float64, inverseProb float64) flo
 	return math.Sqrt(2*math.Log(inverseProb)) * deviation
 }
 
-const boundRatio = 3.0 / 4.0
-const highProbability = 1e9
+func findUpperNormalBound(muy float64, b float64, n float64) float64 {
+	dev := computeDeviation(muy, b, n)
+	return findBoundWithInverseProbability(dev, highProbability)
+}
+
+const highProbability = 1e4
 
 func findUpperBoundWithHighProbability(b float64, n float64) float64 {
-	upperMuy := 2.0 * math.Pow(2.0, boundRatio)
-	result := findUpperChernoffBoundWithHighProbability(upperMuy, b)
+	// upperMuy := 2.0 * math.Pow(2.0, boundRatio)
+	result := findUpperChernoffBoundWithHighProbability(4.0, b)
 
 	secondUpper := 4.0 * n / b
 	if result > secondUpper {
@@ -173,8 +177,7 @@ func findUpperBoundWithHighProbability(b float64, n float64) float64 {
 }
 
 func findLowerBoundWithHighProbability(b float64, n float64) float64 {
-	lowerBound := 2.0 / math.Pow(2.0, boundRatio)
-	result := findLowerChernoffBoundWithHighProbability(lowerBound, b)
+	result := findLowerChernoffBoundWithHighProbability(1.0, b)
 
 	secondLower := 1.0 / n * b
 
@@ -225,7 +228,7 @@ func findUpperChernoffBoundWithHighProbability(muy float64, buckets float64) flo
 
 	const numLoop = 20
 
-	x := 1.0
+	x := 0.25
 	for i := 0; i < numLoop; i++ {
 		x = x - fn(x)/dfx(x)
 	}
@@ -266,16 +269,18 @@ func findLowerChernoffBoundWithHighProbability(muy float64, buckets float64) flo
 
 // BucketSizeBound ...
 type BucketSizeBound struct {
-	Lower float64
-	Upper float64
+	MaxCount int
+	Lower    float64
+	Upper    float64
 }
 
 // ComputeLowerAndUpperBound ...
 func ComputeLowerAndUpperBound(n int) BucketSizeBound {
+	countingBuckets := n
 	if n > 256 {
-		n = 256
+		countingBuckets = 256
 	}
-	b := nearestCouponsCount(n) + 1
+	b := nearestCouponsCount(countingBuckets) + 1
 
 	if n == 32 {
 		b += 2
@@ -286,7 +291,8 @@ func ComputeLowerAndUpperBound(n int) BucketSizeBound {
 	}
 
 	return BucketSizeBound{
-		Upper: findUpperBoundWithHighProbability(float64(b), float64(n)),
-		Lower: findLowerBoundWithHighProbability(float64(b), float64(n)),
+		MaxCount: b,
+		Upper:    findUpperBoundWithHighProbability(float64(b), float64(n)),
+		Lower:    findLowerBoundWithHighProbability(float64(b), float64(n)),
 	}
 }
