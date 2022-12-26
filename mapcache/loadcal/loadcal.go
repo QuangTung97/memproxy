@@ -1,6 +1,31 @@
 package loadcal
 
-import "github.com/QuangTung97/memproxy/mapcache/loadcal/prob"
+// CheckBoundInput ...
+type CheckBoundInput struct {
+	TotalEntries   int // total number of entries in all buckets
+	CountedBuckets int // number of buckets already counted
+	TotalChecked   int // total number of checks
+}
+
+// CheckBoundOutput ...
+type CheckBoundOutput struct {
+	NeedReset bool
+}
+
+// AddEntryInput ...
+type AddEntryInput struct {
+	SizeLog       SizeLog
+	BucketIndex   uint64
+	BucketEntries int // number of entries in the bucket
+	Checker       BoundChecker
+}
+
+//go:generate moq -rm -out loadcal_mocks_test.go . BoundChecker
+
+// BoundChecker for checking load need increasing / decreasing
+type BoundChecker interface {
+	Check(input CheckBoundInput) CheckBoundOutput
+}
 
 // listHead for circular double linked list
 type listHead struct {
@@ -13,11 +38,12 @@ type mapCacheStats struct {
 
 	countedBuckets int // count number of buckets used
 	totalEntries   int // count number of bucket entries
+	totalChecked   int // number of checks
 
 	sizeLog SizeLog
 }
 
-// mapCacheLRUEntry for maintaining stats in a LRU manner
+// mapCacheLRUEntry for maintaining stats in the LRU manner
 type mapCacheLRUEntry struct {
 	hashNext int // single linked list of hash table
 
@@ -41,6 +67,7 @@ func initMapCacheStats(stats *mapCacheStats) {
 	stats.countedBuckets = 0
 	stats.totalEntries = 0
 	stats.sizeLog = SizeLog{}
+	stats.totalChecked = 0
 }
 
 // SizeLog ...
@@ -66,53 +93,25 @@ func (s *mapCacheStats) setCounted(slot uint64) {
 	s.countedSet[index] |= mask
 }
 
-func (s *mapCacheStats) addEntry(sizeLog SizeLog, bucketIndex uint64, bucketEntries int) {
-	slot := bucketIndex & 0xff
+func (s *mapCacheStats) addEntry(entry AddEntryInput) {
+	slot := entry.BucketIndex & 0x3ff
 
-	if s.alreadyCounted(slot) {
-		return
+	s.sizeLog = entry.SizeLog
+	s.totalChecked++
+
+	if !s.alreadyCounted(slot) {
+		s.setCounted(slot)
+
+		s.countedBuckets++
+		s.totalEntries += entry.BucketEntries
 	}
-	s.setCounted(slot)
 
-	s.countedBuckets++
-	s.totalEntries += bucketEntries
-	s.sizeLog = sizeLog
-}
-
-func (s *mapCacheStats) estimatedLoad() float64 {
-	return float64(s.totalEntries) / float64(s.countedBuckets)
-}
-
-func (*mapCacheStats) needNewSizeLog() bool {
-	return false
-}
-
-const maxSizeLog = 10
-
-func initBucketSizeBounds() []prob.BucketSizeBound {
-	result := make([]prob.BucketSizeBound, 0, maxSizeLog+1)
-
-	bound := prob.BucketSizeBound{
-		MaxCount: 1,
-		Lower:    1.0,
-		Upper:    4.0,
+	output := entry.Checker.Check(CheckBoundInput{
+		TotalEntries:   s.totalEntries,
+		CountedBuckets: s.countedBuckets,
+		TotalChecked:   s.totalChecked,
+	})
+	if output.NeedReset {
+		initMapCacheStats(s)
 	}
-	result = append(result, bound)
-
-	bound.MaxCount = 2
-	result = append(result, bound)
-
-	for i := 2; i <= 10; i++ {
-		result = append(result, prob.ComputeLowerAndUpperBound(1<<i))
-	}
-	return result
-}
-
-var bucketBounds = initBucketSizeBounds()
-
-func lowerAndUpperBound(sizeLog SizeLog) prob.BucketSizeBound {
-	if sizeLog.Value > maxSizeLog {
-		return bucketBounds[maxSizeLog]
-	}
-	return bucketBounds[sizeLog.Value]
 }
