@@ -184,7 +184,10 @@ func TestInvBoundProb(t *testing.T) {
 }
 
 func TestFindUpperBound(t *testing.T) {
-	upper := findUpperBoundWithHighProbability(162, 100000)
+	upper := findUpperBoundWithHighProbability(648, 100000)
+	assert.Equal(t, 4.341911300652749, upper)
+
+	upper = findUpperBoundWithHighProbability(162, 100000)
 	assert.Equal(t, 4.69310839835475, upper)
 
 	upper = findUpperBoundWithHighProbability(162, 1e9)
@@ -336,9 +339,9 @@ func TestComputeLowerUpperBound(t *testing.T) {
 
 	result = ComputeLowerAndUpperBound(1024)
 	assert.Equal(t, BucketSizeBound{
-		MaxCount: 163,
-		Lower:    findLowerChernoffBoundWithHighProbability(1.0, 163),
-		Upper:    findUpperChernoffBoundWithHighProbability(4.0, 163),
+		MaxCount: 648,
+		Lower:    findLowerChernoffBoundWithHighProbability(1.0, 648),
+		Upper:    findUpperChernoffBoundWithHighProbability(4.0, 648),
 	}, result)
 
 	result = ComputeLowerAndUpperBound(128)

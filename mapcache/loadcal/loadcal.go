@@ -1,5 +1,7 @@
 package loadcal
 
+import "github.com/QuangTung97/memproxy/mapcache/loadcal/prob"
+
 // listHead for circular double linked list
 type listHead struct {
 	next int // = -1 => refer to root
@@ -7,7 +9,7 @@ type listHead struct {
 }
 
 type mapCacheStats struct {
-	countedSet [4]uint64 // 256 / 64 bit
+	countedSet [16]uint64 // 256 / 64 bit
 
 	countedBuckets int // count number of buckets used
 	totalEntries   int // count number of bucket entries
@@ -35,7 +37,7 @@ type LoadCalculator struct {
 }
 
 func initMapCacheStats(stats *mapCacheStats) {
-	stats.countedSet = [4]uint64{}
+	stats.countedSet = [16]uint64{}
 	stats.countedBuckets = 0
 	stats.totalEntries = 0
 	stats.sizeLog = SizeLog{}
@@ -85,20 +87,32 @@ func (*mapCacheStats) needNewSizeLog() bool {
 	return false
 }
 
-var boundTable = []int{
-	1,  // 0
-	2,  // 1
-	4,  // 2
-	7,  // 3
-	11, // 4
-	21, // 5
-	41, // 6
-	81, // 7
+const maxSizeLog = 10
+
+func initBucketSizeBounds() []prob.BucketSizeBound {
+	result := make([]prob.BucketSizeBound, 0, maxSizeLog+1)
+
+	bound := prob.BucketSizeBound{
+		MaxCount: 1,
+		Lower:    1.0,
+		Upper:    4.0,
+	}
+	result = append(result, bound)
+
+	bound.MaxCount = 2
+	result = append(result, bound)
+
+	for i := 2; i <= 10; i++ {
+		result = append(result, prob.ComputeLowerAndUpperBound(1<<i))
+	}
+	return result
 }
 
-func computeCountedResetBound(sizeLog SizeLog) int {
-	if sizeLog.Value >= 8 {
-		return 162 // 256 * (1 - 1/e) ~ 161.82286306
+var bucketBounds = initBucketSizeBounds()
+
+func lowerAndUpperBound(sizeLog SizeLog) prob.BucketSizeBound {
+	if sizeLog.Value > maxSizeLog {
+		return bucketBounds[maxSizeLog]
 	}
-	return boundTable[sizeLog.Value]
+	return bucketBounds[sizeLog.Value]
 }

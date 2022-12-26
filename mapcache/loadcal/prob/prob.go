@@ -165,7 +165,6 @@ func findUpperNormalBound(muy float64, b float64, n float64) float64 {
 const highProbability = 1e4
 
 func findUpperBoundWithHighProbability(b float64, n float64) float64 {
-	// upperMuy := 2.0 * math.Pow(2.0, boundRatio)
 	result := findUpperChernoffBoundWithHighProbability(4.0, b)
 
 	secondUpper := 4.0 * n / b
@@ -276,11 +275,7 @@ type BucketSizeBound struct {
 
 // ComputeLowerAndUpperBound ...
 func ComputeLowerAndUpperBound(n int) BucketSizeBound {
-	countingBuckets := n
-	if n > 256 {
-		countingBuckets = 256
-	}
-	b := nearestCouponsCount(countingBuckets) + 1
+	b := nearestCouponsCount(n) + 1
 
 	if n == 32 {
 		b += 2
