@@ -18,10 +18,10 @@ var _ Provider = &providerImpl{}
 
 // NewProvider ...
 func NewProvider(
-	client memproxy.Memcache, filler Filler,
+	client memproxy.Memcache, fillerFactory FillerFactory,
 ) Provider {
 	return &providerImpl{
-		client: memproxy.NewFillerMemcache(client, &memproxyFiller{filler: filler}),
+		client: memproxy.NewFillerMemcache(client, &memproxyFillerFactory{factory: fillerFactory}),
 	}
 }
 
@@ -225,11 +225,21 @@ func (i *invalidatorImpl) DeleteKeys(
 	return result
 }
 
+type memproxyFillerFactory struct {
+	factory FillerFactory
+}
+
 type memproxyFiller struct {
 	filler Filler
 }
 
-var _ memproxy.Filler = &memproxyFiller{}
+var _ memproxy.FillerFactory = &memproxyFillerFactory{}
+
+func (f *memproxyFillerFactory) New() memproxy.Filler {
+	return &memproxyFiller{
+		filler: f.factory.New(),
+	}
+}
 
 func (p *fillParams) setResponse(entries []Entry) {
 	p.completed = true

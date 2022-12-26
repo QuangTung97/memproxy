@@ -6,18 +6,18 @@ import (
 )
 
 type fillerMemcacheImpl struct {
-	origin Memcache
-	filler Filler
+	origin  Memcache
+	factory FillerFactory
 }
 
 var _ Memcache = &fillerMemcacheImpl{}
 
 // NewFillerMemcache protects again then *Thundering Herb Problem*
 // With this Decorator, status = LeaseGetStatusLeaseGranted or status = LeaseGetStatusLeaseRejected will never happen
-func NewFillerMemcache(origin Memcache, filler Filler) Memcache {
+func NewFillerMemcache(origin Memcache, fillerFactory FillerFactory) Memcache {
 	return &fillerMemcacheImpl{
-		origin: origin,
-		filler: filler,
+		origin:  origin,
+		factory: fillerFactory,
 	}
 }
 
@@ -38,7 +38,7 @@ func (m *fillerMemcacheImpl) Pipeline(ctx context.Context, sess Session) Pipelin
 
 		ctx:    ctx,
 		sess:   sess,
-		filler: m.filler,
+		filler: m.factory.New(),
 	}
 }
 

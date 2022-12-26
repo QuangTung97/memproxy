@@ -5,7 +5,7 @@ import (
 	"github.com/QuangTung97/memproxy"
 )
 
-//go:generate moq -rm -out mapcache_mocks_test.go . Filler
+//go:generate moq -rm -out mapcache_mocks_test.go . Filler FillerFactory
 
 // NewOptions options to call Get Bucket
 type NewOptions struct {
@@ -13,6 +13,7 @@ type NewOptions struct {
 }
 
 // Provider for user managed size log
+// this interface is thread safe
 type Provider interface {
 	New(ctx context.Context,
 		sess memproxy.Session, rootKey string,
@@ -28,6 +29,7 @@ type InvalidatorFactory interface {
 // TODO AutoSizeProvider
 
 // MapCache for handling big hash tables in memcached
+// this interface is NOT thread safe
 type MapCache interface {
 	Get(key string, options GetOptions) func() (GetResponse, error)
 }
@@ -40,6 +42,7 @@ type Invalidator interface {
 
 // FillerFactory MUST BE thread safe
 type FillerFactory interface {
+	New() Filler
 }
 
 // Filler not need to be thread safe

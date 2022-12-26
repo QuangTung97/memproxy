@@ -28,7 +28,13 @@ func newFillerMemcacheTest() *fillerMemcacheTest {
 	provider := &SessionProviderMock{}
 	origin := &MemcacheMock{}
 	originPipe := &PipelineMock{}
+
 	filler := &FillerMock{}
+	fillerFactory := &FillerFactoryMock{
+		NewFunc: func() Filler {
+			return filler
+		},
+	}
 
 	sess := &SessionMock{}
 
@@ -61,7 +67,7 @@ func newFillerMemcacheTest() *fillerMemcacheTest {
 		}
 	}
 
-	mc := NewFillerMemcache(origin, filler)
+	mc := NewFillerMemcache(origin, fillerFactory)
 	return &fillerMemcacheTest{
 		sess:       sess,
 		originPipe: originPipe,

@@ -84,3 +84,61 @@ func (mock *FillerMock) GetBucketCalls() []struct {
 	mock.lockGetBucket.RUnlock()
 	return calls
 }
+
+// Ensure, that FillerFactoryMock does implement FillerFactory.
+// If this is not the case, regenerate this file with moq.
+var _ FillerFactory = &FillerFactoryMock{}
+
+// FillerFactoryMock is a mock implementation of FillerFactory.
+//
+// 	func TestSomethingThatUsesFillerFactory(t *testing.T) {
+//
+// 		// make and configure a mocked FillerFactory
+// 		mockedFillerFactory := &FillerFactoryMock{
+// 			NewFunc: func() Filler {
+// 				panic("mock out the New method")
+// 			},
+// 		}
+//
+// 		// use mockedFillerFactory in code that requires FillerFactory
+// 		// and then make assertions.
+//
+// 	}
+type FillerFactoryMock struct {
+	// NewFunc mocks the New method.
+	NewFunc func() Filler
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// New holds details about calls to the New method.
+		New []struct {
+		}
+	}
+	lockNew sync.RWMutex
+}
+
+// New calls NewFunc.
+func (mock *FillerFactoryMock) New() Filler {
+	if mock.NewFunc == nil {
+		panic("FillerFactoryMock.NewFunc: method is nil but FillerFactory.New was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockNew.Lock()
+	mock.calls.New = append(mock.calls.New, callInfo)
+	mock.lockNew.Unlock()
+	return mock.NewFunc()
+}
+
+// NewCalls gets all the calls that were made to New.
+// Check the length with:
+//     len(mockedFillerFactory.NewCalls())
+func (mock *FillerFactoryMock) NewCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockNew.RLock()
+	calls = mock.calls.New
+	mock.lockNew.RUnlock()
+	return calls
+}

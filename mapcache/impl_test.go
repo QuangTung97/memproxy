@@ -34,7 +34,13 @@ func defaultSizeLog() SizeLog {
 
 func newMapCacheTest(sizeLog SizeLog) *mapCacheTest {
 	sess := &memproxy.SessionMock{}
+
 	filler := &FillerMock{}
+	fillerFactory := &FillerFactoryMock{
+		NewFunc: func() Filler {
+			return filler
+		},
+	}
 
 	client := &memproxy.MemcacheMock{}
 	pipe := &memproxy.PipelineMock{}
@@ -63,7 +69,7 @@ func newMapCacheTest(sizeLog SizeLog) *mapCacheTest {
 
 	const rootKey = "rootkey"
 
-	provider := NewProvider(client, filler)
+	provider := NewProvider(client, fillerFactory)
 	return &mapCacheTest{
 		pipe:   pipe,
 		filler: filler,
