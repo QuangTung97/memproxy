@@ -11,6 +11,9 @@ type providerImpl struct {
 	client memproxy.Memcache
 }
 
+type invalidatorFactoryImpl struct {
+}
+
 var _ Provider = &providerImpl{}
 
 // NewProvider ...
@@ -22,34 +25,60 @@ func NewProvider(
 	}
 }
 
+// NewInvalidatorFactory ...
+func NewInvalidatorFactory() InvalidatorFactory {
+	return &invalidatorFactoryImpl{}
+}
+
 // New ...
 func (p *providerImpl) New(
 	ctx context.Context, sess memproxy.Session,
 	rootKey string, sizeLog SizeLog, options NewOptions,
 ) MapCache {
 	return &mapCacheImpl{
-		sess:     sess,
-		rootKey:  rootKey,
-		sizeLog:  sizeLog,
+		sess: sess,
+		conf: mapCacheConfig{
+			rootKey: rootKey,
+			sizeLog: sizeLog,
+		},
 		pipeline: p.client.Pipeline(ctx, sess),
 		options:  options,
 	}
 }
 
+func (*invalidatorFactoryImpl) New(rootKey string, sizeLog SizeLog) Invalidator {
+	return &invalidatorImpl{
+		conf: mapCacheConfig{
+			rootKey: rootKey,
+			sizeLog: sizeLog,
+		},
+	}
+}
+
+type mapCacheConfig struct {
+	rootKey string
+	sizeLog SizeLog
+}
+
 type mapCacheImpl struct {
 	sess     memproxy.Session
-	rootKey  string
-	sizeLog  SizeLog
+	conf     mapCacheConfig
 	pipeline memproxy.Pipeline
 	options  NewOptions
 }
 
-func (p *mapCacheImpl) getBucketCacheKey(keyHash uint64, sizeLog uint64, version uint64) string {
+type invalidatorImpl struct {
+	conf mapCacheConfig
+}
+
+func (c mapCacheConfig) getBucketCacheKey(
+	keyHash uint64, sizeLog uint64, version uint64,
+) string {
 	sizeLogStr := strconv.FormatUint(sizeLog, 10)
 	sizeLogVersion := strconv.FormatUint(version, 10)
 
 	var buf strings.Builder
-	buf.WriteString(p.rootKey)
+	buf.WriteString(c.rootKey)
 	buf.WriteString(":")
 	buf.WriteString(sizeLogStr)
 	buf.WriteString(":")
@@ -60,12 +89,12 @@ func (p *mapCacheImpl) getBucketCacheKey(keyHash uint64, sizeLog uint64, version
 	return buf.String()
 }
 
-func (p *mapCacheImpl) getHighCacheKey(keyHash uint64) string {
-	return p.getBucketCacheKey(keyHash, p.sizeLog.Current, p.sizeLog.Version)
+func (c mapCacheConfig) getHighCacheKey(keyHash uint64) string {
+	return c.getBucketCacheKey(keyHash, c.sizeLog.Current, c.sizeLog.Version)
 }
 
-func (p *mapCacheImpl) getLowCacheKey(keyHash uint64) string {
-	return p.getBucketCacheKey(keyHash, p.sizeLog.Previous, p.sizeLog.Version-1)
+func (c mapCacheConfig) getLowCacheKey(keyHash uint64) string {
+	return c.getBucketCacheKey(keyHash, c.sizeLog.Previous, c.sizeLog.Version-1)
 }
 
 func findEntryInList(entries []Entry, key string) (Entry, bool) {
@@ -83,7 +112,6 @@ type fillParams struct {
 	key       string
 	hashRange HashRange
 
-	sizeLog        uint64
 	sizeLogVersion uint64
 
 	completed bool
@@ -117,28 +145,20 @@ func doGetHandleLeaseResponse(params *fillParams, leaseGetFn func() (memproxy.Le
 }
 
 // Get ...
-func (p *mapCacheImpl) Get(
+func (m *mapCacheImpl) Get(
 	key string, _ GetOptions,
 ) func() (GetResponse, error) {
 	keyHash := hashFunc(key)
 
-	highKey := p.getHighCacheKey(keyHash)
-	fn := p.pipeline.Get(highKey, memproxy.GetOptions{})
+	highKey := m.conf.getHighCacheKey(keyHash)
+	fn := m.pipeline.Get(highKey, memproxy.GetOptions{})
 
-	hashRange := computeHashRange(keyHash, p.sizeLog.Current)
+	hashRange := computeHashRange(keyHash, m.conf.sizeLog.Current)
 	params := &fillParams{
-		sess: p.sess,
-
-		key:       key,
-		hashRange: hashRange,
-
-		sizeLog:        p.sizeLog.Current,
-		sizeLogVersion: p.sizeLog.Version,
-
-		newOptions: p.options,
+		key: key,
 	}
 
-	p.sess.AddNextCall(func() {
+	m.sess.AddNextCall(func() {
 		getResp, err := fn()
 		if err != nil {
 			params.setError(err)
@@ -156,46 +176,51 @@ func (p *mapCacheImpl) Get(
 			return
 		}
 
-		leaseGetFn := p.pipeline.LeaseGet(highKey, memproxy.LeaseGetOptions{
+		params.sess = m.sess
+		params.hashRange = hashRange
+		params.sizeLogVersion = m.conf.sizeLog.Version
+		params.newOptions = m.options
+
+		leaseGetFn := m.pipeline.LeaseGet(highKey, memproxy.LeaseGetOptions{
 			FillParams: params,
 		})
 
-		if p.sizeLog.Previous == p.sizeLog.Current+1 {
-			lowKey1 := p.getLowCacheKey(hashRange.Begin)
-			lowKey2 := p.getLowCacheKey(hashRange.End)
+		if m.conf.sizeLog.Previous == m.conf.sizeLog.Current+1 {
+			lowKey1 := m.conf.getLowCacheKey(hashRange.Begin)
+			lowKey2 := m.conf.getLowCacheKey(hashRange.End)
 
-			params.lowKeyGetFn = p.pipeline.Get(lowKey1, memproxy.GetOptions{})
-			params.lowKeyGetFn2 = p.pipeline.Get(lowKey2, memproxy.GetOptions{})
+			params.lowKeyGetFn = m.pipeline.Get(lowKey1, memproxy.GetOptions{})
+			params.lowKeyGetFn2 = m.pipeline.Get(lowKey2, memproxy.GetOptions{})
 		} else {
-			lowKey := p.getLowCacheKey(keyHash)
-			params.lowKeyGetFn = p.pipeline.Get(lowKey, memproxy.GetOptions{})
+			lowKey := m.conf.getLowCacheKey(keyHash)
+			params.lowKeyGetFn = m.pipeline.Get(lowKey, memproxy.GetOptions{})
 		}
 
-		p.sess.AddNextCall(func() {
+		m.sess.AddNextCall(func() {
 			doGetHandleLeaseResponse(params, leaseGetFn)
 		})
 	})
 
 	return func() (GetResponse, error) {
-		p.sess.Execute()
+		m.sess.Execute()
 		return params.resp, params.err
 	}
 }
 
 // DeleteKeys ...
-func (p *mapCacheImpl) DeleteKeys(
+func (i *invalidatorImpl) DeleteKeys(
 	key string, _ DeleteKeyOptions,
 ) []string {
 	keyHash := hashFunc(key)
 
 	result := make([]string, 0, 3)
-	result = append(result, p.getHighCacheKey(keyHash))
-	if p.sizeLog.Previous > p.sizeLog.Current {
-		hashRange := computeHashRange(keyHash, p.sizeLog.Current)
-		result = append(result, p.getLowCacheKey(hashRange.Begin))
-		result = append(result, p.getLowCacheKey(hashRange.End))
+	result = append(result, i.conf.getHighCacheKey(keyHash))
+	if i.conf.sizeLog.Previous > i.conf.sizeLog.Current {
+		hashRange := computeHashRange(keyHash, i.conf.sizeLog.Current)
+		result = append(result, i.conf.getLowCacheKey(hashRange.Begin))
+		result = append(result, i.conf.getLowCacheKey(hashRange.End))
 	} else {
-		result = append(result, p.getLowCacheKey(keyHash))
+		result = append(result, i.conf.getLowCacheKey(keyHash))
 	}
 	return result
 }

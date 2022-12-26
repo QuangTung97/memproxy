@@ -20,15 +20,29 @@ type Provider interface {
 	) MapCache
 }
 
+// InvalidatorFactory ...
+type InvalidatorFactory interface {
+	New(rootKey string, sizeLog SizeLog) Invalidator
+}
+
 // TODO AutoSizeProvider
 
 // MapCache for handling big hash tables in memcached
 type MapCache interface {
 	Get(key string, options GetOptions) func() (GetResponse, error)
+}
+
+// Invalidator ...
+type Invalidator interface {
+	// DeleteKeys compute deleted keys
 	DeleteKeys(key string, options DeleteKeyOptions) []string
 }
 
-// Filler ...
+// FillerFactory MUST BE thread safe
+type FillerFactory interface {
+}
+
+// Filler not need to be thread safe
 type Filler interface {
 	GetBucket(ctx context.Context, options NewOptions, hashRange HashRange) func() (GetBucketResponse, error)
 }

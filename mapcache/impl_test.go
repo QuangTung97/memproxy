@@ -12,6 +12,7 @@ type mapCacheTest struct {
 	pipe   *memproxy.PipelineMock
 	filler *FillerMock
 	mc     MapCache
+	inv    Invalidator
 }
 
 type ctxTestKeyType struct {
@@ -60,11 +61,14 @@ func newMapCacheTest(sizeLog SizeLog) *mapCacheTest {
 		}
 	}
 
+	const rootKey = "rootkey"
+
 	provider := NewProvider(client, filler)
 	return &mapCacheTest{
 		pipe:   pipe,
 		filler: filler,
-		mc:     provider.New(newTestContext(), sess, "rootkey", sizeLog, NewOptions{Params: "root-params"}),
+		mc:     provider.New(newTestContext(), sess, rootKey, sizeLog, NewOptions{Params: "root-params"}),
+		inv:    NewInvalidatorFactory().New(rootKey, sizeLog),
 	}
 }
 
@@ -1313,7 +1317,7 @@ func TestMapCache_Get_Delete_Keys(t *testing.T) {
 	})
 	const key1 = "KEY01"
 
-	keys := m.mc.DeleteKeys(key1, DeleteKeyOptions{})
+	keys := m.inv.DeleteKeys(key1, DeleteKeyOptions{})
 	assert.Equal(t, []string{
 		"rootkey:5:71:" + computeBucketKeyString(key1, 5),
 		"rootkey:4:70:" + computeBucketKeyString(key1, 4),
@@ -1328,7 +1332,7 @@ func TestMapCache_Get_Delete_Keys__With_Previous_Higher(t *testing.T) {
 	})
 	const key1 = "KEY01"
 
-	keys := m.mc.DeleteKeys(key1, DeleteKeyOptions{})
+	keys := m.inv.DeleteKeys(key1, DeleteKeyOptions{})
 
 	hashRange := computeHashRange(hashFunc(key1), 8)
 	assert.Equal(t, []string{
