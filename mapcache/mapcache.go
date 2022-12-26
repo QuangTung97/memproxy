@@ -15,18 +15,25 @@ type NewOptions struct {
 // Provider for user managed size log
 // this interface is thread safe
 type Provider interface {
-	New(ctx context.Context,
-		sess memproxy.Session, rootKey string,
-		sizeLog SizeLog, options NewOptions,
+	New(
+		ctx context.Context, sess memproxy.Session,
+		rootKey string, sizeLog SizeLog, options NewOptions,
 	) MapCache
 }
 
-// InvalidatorFactory ...
+// InvalidatorFactory is thread safe
 type InvalidatorFactory interface {
 	New(rootKey string, sizeLog SizeLog) Invalidator
 }
 
-// TODO AutoSizeProvider
+// AutoSizeProvider for automatic managing size logs
+// this interface is thread safe
+type AutoSizeProvider interface {
+	New(
+		ctx context.Context, sess memproxy.Session,
+		rootKey string, options NewOptions,
+	) MapCache
+}
 
 // MapCache for handling big hash tables in memcached
 // this interface is NOT thread safe

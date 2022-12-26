@@ -31,14 +31,14 @@ func newFillerMemcacheTest() *fillerMemcacheTest {
 
 	filler := &FillerMock{}
 	fillerFactory := &FillerFactoryMock{
-		NewFunc: func() Filler {
+		NewFunc: func(sess Session) Filler {
 			return filler
 		},
 	}
 
 	sess := &SessionMock{}
 
-	provider.NewFunc = func() Session {
+	provider.NewFunc = func(options ...SessionOption) Session {
 		return sess
 	}
 
@@ -111,7 +111,7 @@ func (m *fillerMemcacheTest) stubLeaseSet() {
 
 func (m *fillerMemcacheTest) stubFill(respData []byte, err error) {
 	m.filler.FillFunc = func(
-		ctx context.Context, params interface{}, key string,
+		ctx context.Context, params interface{},
 		completeFn func(resp FillResponse, err error),
 	) {
 		m.sess.AddNextCall(func() {
@@ -122,7 +122,7 @@ func (m *fillerMemcacheTest) stubFill(respData []byte, err error) {
 
 func (m *fillerMemcacheTest) stubFillMulti(respData ...[]byte) {
 	m.filler.FillFunc = func(
-		ctx context.Context, params interface{}, key string,
+		ctx context.Context, params interface{},
 		completeFn func(resp FillResponse, err error),
 	) {
 		index := len(m.filler.FillCalls()) - 1
@@ -196,7 +196,6 @@ func TestFillerMemcache__Get_Granted__Call_Filler(t *testing.T) {
 
 	assert.Equal(t, 1, len(m.filler.FillCalls()))
 	assert.Equal(t, newTestContext(), m.filler.FillCalls()[0].Ctx)
-	assert.Equal(t, key1, m.filler.FillCalls()[0].Key)
 	assert.Equal(t, "some fill params", m.filler.FillCalls()[0].Params)
 
 	setCalls := m.originPipe.LeaseSetCalls()

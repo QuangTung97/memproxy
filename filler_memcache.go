@@ -38,7 +38,7 @@ func (m *fillerMemcacheImpl) Pipeline(ctx context.Context, sess Session) Pipelin
 
 		ctx:    ctx,
 		sess:   sess,
-		filler: m.factory.New(),
+		filler: m.factory.New(sess),
 	}
 }
 
@@ -84,7 +84,7 @@ func (p *fillerPipelineImpl) LeaseGet(key string, options LeaseGetOptions) func(
 					Data:   fillResp.Data,
 				}
 			}
-			p.filler.Fill(p.ctx, options.FillParams, key, completeFn)
+			p.filler.Fill(p.ctx, options.FillParams, completeFn)
 			return
 		}
 

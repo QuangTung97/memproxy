@@ -23,16 +23,32 @@ type Pipeline interface {
 	Finish()
 }
 
-// SessionProvider for controlling delayed tasks
-type SessionProvider interface {
-	New() Session
+type sessionOptions struct {
+	params interface{}
 }
 
-// Session controlling delayed tasks
+// SessionOption ...
+type SessionOption func(opts *sessionOptions)
+
+// WithSessionParams ...
+func WithSessionParams(params interface{}) SessionOption {
+	return func(opts *sessionOptions) {
+		opts.params = params
+	}
+}
+
+// SessionProvider for controlling delayed tasks
+type SessionProvider interface {
+	New(options ...SessionOption) Session
+}
+
+// Session controlling session values & delayed tasks
 type Session interface {
 	AddNextCall(fn func())
 	AddDelayedCall(d time.Duration, fn func())
 	Execute()
+
+	GetParams() interface{}
 }
 
 // GetOptions specify GET options
@@ -95,10 +111,10 @@ type FillResponse struct {
 
 // FillerFactory must be thread safe
 type FillerFactory interface {
-	New() Filler
+	New(sess Session) Filler
 }
 
 // Filler for filling memcache contents, implementation of this interface NOT need to be thread safe
 type Filler interface {
-	Fill(ctx context.Context, params interface{}, key string, completeFn func(resp FillResponse, err error))
+	Fill(ctx context.Context, params interface{}, completeFn func(resp FillResponse, err error))
 }
