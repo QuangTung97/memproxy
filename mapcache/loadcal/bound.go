@@ -31,3 +31,17 @@ func lowerAndUpperBound(sizeLog SizeLog) prob.BucketSizeBound {
 	}
 	return bucketBounds[sizeLog.Value]
 }
+
+type boundChecker struct {
+}
+
+var _ BoundChecker = &boundChecker{}
+
+// NewBoundChecker ...
+func NewBoundChecker() BoundChecker {
+	return &boundChecker{}
+}
+
+func (*boundChecker) Check(_ CheckBoundInput) CheckBoundOutput {
+	return CheckBoundOutput{}
+}

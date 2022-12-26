@@ -71,3 +71,80 @@ func (mock *BoundCheckerMock) CheckCalls() []struct {
 	mock.lockCheck.RUnlock()
 	return calls
 }
+
+// Ensure, that SizeLogUpdaterMock does implement SizeLogUpdater.
+// If this is not the case, regenerate this file with moq.
+var _ SizeLogUpdater = &SizeLogUpdaterMock{}
+
+// SizeLogUpdaterMock is a mock implementation of SizeLogUpdater.
+//
+// 	func TestSomethingThatUsesSizeLogUpdater(t *testing.T) {
+//
+// 		// make and configure a mocked SizeLogUpdater
+// 		mockedSizeLogUpdater := &SizeLogUpdaterMock{
+// 			UpdateFunc: func(key string, sizeLog SizeLog, options UpdateOptions)  {
+// 				panic("mock out the Update method")
+// 			},
+// 		}
+//
+// 		// use mockedSizeLogUpdater in code that requires SizeLogUpdater
+// 		// and then make assertions.
+//
+// 	}
+type SizeLogUpdaterMock struct {
+	// UpdateFunc mocks the Update method.
+	UpdateFunc func(key string, sizeLog SizeLog, options UpdateOptions)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// Update holds details about calls to the Update method.
+		Update []struct {
+			// Key is the key argument value.
+			Key string
+			// SizeLog is the sizeLog argument value.
+			SizeLog SizeLog
+			// Options is the options argument value.
+			Options UpdateOptions
+		}
+	}
+	lockUpdate sync.RWMutex
+}
+
+// Update calls UpdateFunc.
+func (mock *SizeLogUpdaterMock) Update(key string, sizeLog SizeLog, options UpdateOptions) {
+	if mock.UpdateFunc == nil {
+		panic("SizeLogUpdaterMock.UpdateFunc: method is nil but SizeLogUpdater.Update was just called")
+	}
+	callInfo := struct {
+		Key     string
+		SizeLog SizeLog
+		Options UpdateOptions
+	}{
+		Key:     key,
+		SizeLog: sizeLog,
+		Options: options,
+	}
+	mock.lockUpdate.Lock()
+	mock.calls.Update = append(mock.calls.Update, callInfo)
+	mock.lockUpdate.Unlock()
+	mock.UpdateFunc(key, sizeLog, options)
+}
+
+// UpdateCalls gets all the calls that were made to Update.
+// Check the length with:
+//     len(mockedSizeLogUpdater.UpdateCalls())
+func (mock *SizeLogUpdaterMock) UpdateCalls() []struct {
+	Key     string
+	SizeLog SizeLog
+	Options UpdateOptions
+} {
+	var calls []struct {
+		Key     string
+		SizeLog SizeLog
+		Options UpdateOptions
+	}
+	mock.lockUpdate.RLock()
+	calls = mock.calls.Update
+	mock.lockUpdate.RUnlock()
+	return calls
+}

@@ -170,3 +170,57 @@ func TestMapCacheStats__Call_Check_After_Same_Bucket_Index(t *testing.T) {
 		CountedBuckets: 2,
 	}, checkCalls[2].Input)
 }
+
+func TestMapCacheStats__Reset_When_Receive_New_Size_Log(t *testing.T) {
+	s := newStatsTest()
+
+	sizeLog := SizeLog{
+		Value:   1,
+		Version: 61,
+	}
+	s.addEntryVersion(sizeLog, 0, 6)
+	s.addEntryVersion(sizeLog, 1, 7)
+
+	sizeLog = SizeLog{
+		Value:   2,
+		Version: 62,
+	}
+	s.addEntryVersion(sizeLog, 2, 5)
+
+	checkCalls := s.checker.CheckCalls()
+
+	assert.Equal(t, 3, len(checkCalls))
+
+	assert.Equal(t, CheckBoundInput{
+		TotalChecked:   1,
+		TotalEntries:   5,
+		CountedBuckets: 1,
+	}, checkCalls[2].Input)
+}
+
+func TestMapCacheStats__Not_Reset_When_Receive_New_Size_Log__But_Lower(t *testing.T) {
+	s := newStatsTest()
+
+	sizeLog := SizeLog{
+		Value:   1,
+		Version: 61,
+	}
+	s.addEntryVersion(sizeLog, 0, 6)
+	s.addEntryVersion(sizeLog, 1, 7)
+
+	sizeLog = SizeLog{
+		Value:   2,
+		Version: 60,
+	}
+	s.addEntryVersion(sizeLog, 2, 5)
+
+	checkCalls := s.checker.CheckCalls()
+
+	assert.Equal(t, 2, len(checkCalls))
+
+	assert.Equal(t, CheckBoundInput{
+		TotalChecked:   2,
+		TotalEntries:   13,
+		CountedBuckets: 2,
+	}, checkCalls[1].Input)
+}
