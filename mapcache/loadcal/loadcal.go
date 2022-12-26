@@ -2,10 +2,11 @@ package loadcal
 
 // CheckBoundInput ...
 type CheckBoundInput struct {
-	Key            string // size log key
-	TotalEntries   int    // total number of entries in all buckets
-	CountedBuckets int    // number of buckets already counted
-	TotalChecked   int    // total number of checks
+	Key            string  // size log key
+	TotalEntries   float64 // total number of entries in all buckets
+	CountedBuckets int     // number of buckets already counted
+	TotalChecked   int     // total number of checks
+	CurrentSizeLog SizeLog // current value of size log
 }
 
 // CheckBoundOutput ...
@@ -18,7 +19,7 @@ type AddEntryInput struct {
 	Key           string // size log key
 	SizeLog       SizeLog
 	BucketIndex   uint64
-	BucketEntries int // number of entries in the bucket
+	BucketEntries float64 // number of entries in the bucket
 	Checker       BoundChecker
 }
 
@@ -41,9 +42,9 @@ type SizeLogUpdater interface {
 type mapCacheStats struct {
 	countedSet [16]uint64 // 256 / 64 bit
 
-	countedBuckets int // count number of buckets used
-	totalEntries   int // count number of bucket entries
-	totalChecked   int // number of checks
+	countedBuckets int     // count number of buckets used
+	totalEntries   float64 // count number of bucket entries
+	totalChecked   int     // number of checks
 
 	sizeLog SizeLog
 }
@@ -103,6 +104,7 @@ func (s *mapCacheStats) addEntry(entry AddEntryInput) {
 	}
 
 	output := entry.Checker.Check(CheckBoundInput{
+		Key:            entry.Key,
 		TotalEntries:   s.totalEntries,
 		CountedBuckets: s.countedBuckets,
 		TotalChecked:   s.totalChecked,

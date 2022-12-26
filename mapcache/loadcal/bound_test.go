@@ -37,7 +37,7 @@ func TestLowerAndUpperBound(t *testing.T) {
 	})
 	assert.Equal(t, prob.BucketSizeBound{
 		MaxCount: 1,
-		Lower:    1.0,
+		Lower:    0.0,
 		Upper:    4.0,
 	}, bound)
 
@@ -76,4 +76,124 @@ func TestLowerAndUpperBound(t *testing.T) {
 		Lower:    0.71875,
 		Upper:    5.565217391304348,
 	}, bound)
+}
+
+type boundCheckerTest struct {
+	updater *SizeLogUpdaterMock
+	checker BoundChecker
+}
+
+func newBoundCheckerTest() *boundCheckerTest {
+	updater := &SizeLogUpdaterMock{
+		UpdateFunc: func(key string, sizeLog SizeLog, options UpdateOptions) {
+		},
+	}
+	return &boundCheckerTest{
+		updater: updater,
+		checker: NewBoundChecker(updater),
+	}
+}
+
+func TestBoundChecker__Call_Update_SizeLog__When_Reach_Buckets_Count_And_Load(t *testing.T) {
+	c := newBoundCheckerTest()
+
+	const key = "KEY01"
+
+	const upper = 5.566
+
+	output := c.checker.Check(CheckBoundInput{
+		Key:            key,
+		TotalEntries:   upper * 23,
+		CountedBuckets: 23,
+		TotalChecked:   30,
+		CurrentSizeLog: SizeLog{
+			Value:   5,
+			Version: 41,
+		},
+	})
+	assert.Equal(t, true, output.NeedReset)
+
+	updateCalls := c.updater.UpdateCalls()
+	assert.Equal(t, 1, len(updateCalls))
+	assert.Equal(t, key, updateCalls[0].Key)
+	assert.Equal(t, SizeLog{
+		Value:   6,
+		Version: 42,
+	}, updateCalls[0].SizeLog)
+
+	// Not Call When not enough counted buckets
+	output = c.checker.Check(CheckBoundInput{
+		Key:            key,
+		TotalEntries:   upper * 22,
+		CountedBuckets: 22,
+		TotalChecked:   30,
+		CurrentSizeLog: SizeLog{
+			Value:   5,
+			Version: 41,
+		},
+	})
+	assert.Equal(t, false, output.NeedReset)
+
+	updateCalls = c.updater.UpdateCalls()
+	assert.Equal(t, 1, len(updateCalls))
+
+	// Not Call When not reach limit
+	output = c.checker.Check(CheckBoundInput{
+		Key:            key,
+		TotalEntries:   (upper - 0.001) * 23,
+		CountedBuckets: 23,
+		TotalChecked:   30,
+		CurrentSizeLog: SizeLog{
+			Value:   5,
+			Version: 41,
+		},
+	})
+	assert.Equal(t, true, output.NeedReset)
+
+	updateCalls = c.updater.UpdateCalls()
+	assert.Equal(t, 1, len(updateCalls))
+}
+
+func TestBoundChecker__Call_Update_SizeLog__When_Reach_Lower_Buckets_Count_And_Load(t *testing.T) {
+	c := newBoundCheckerTest()
+
+	const key = "KEY01"
+
+	const lower = 0.7186
+
+	output := c.checker.Check(CheckBoundInput{
+		Key:            key,
+		TotalEntries:   lower * 23,
+		CountedBuckets: 23,
+		TotalChecked:   30,
+		CurrentSizeLog: SizeLog{
+			Value:   5,
+			Version: 41,
+		},
+	})
+	assert.Equal(t, true, output.NeedReset)
+
+	updateCalls := c.updater.UpdateCalls()
+	assert.Equal(t, 1, len(updateCalls))
+	assert.Equal(t, key, updateCalls[0].Key)
+	assert.Equal(t, SizeLog{
+		Value:   4,
+		Version: 42,
+	}, updateCalls[0].SizeLog)
+
+	// Not Call When not reach lower limit
+	output = c.checker.Check(CheckBoundInput{
+		Key:            key,
+		TotalEntries:   (lower + 0.001) * 23,
+		CountedBuckets: 23,
+		TotalChecked:   30,
+		CurrentSizeLog: SizeLog{
+			Value:   5,
+			Version: 41,
+		},
+	})
+	assert.Equal(t, true, output.NeedReset)
+
+	updateCalls = c.updater.UpdateCalls()
+	assert.Equal(t, 1, len(updateCalls))
 }

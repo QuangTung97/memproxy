@@ -9,12 +9,13 @@ func initBucketSizeBounds() []prob.BucketSizeBound {
 
 	bound := prob.BucketSizeBound{
 		MaxCount: 1,
-		Lower:    1.0,
+		Lower:    0.0,
 		Upper:    4.0,
 	}
 	result = append(result, bound)
 
 	bound.MaxCount = 2
+	bound.Lower = 1.0
 	result = append(result, bound)
 
 	for i := 2; i <= 10; i++ {
@@ -33,15 +34,50 @@ func lowerAndUpperBound(sizeLog SizeLog) prob.BucketSizeBound {
 }
 
 type boundChecker struct {
+	updater SizeLogUpdater
 }
 
 var _ BoundChecker = &boundChecker{}
 
 // NewBoundChecker ...
-func NewBoundChecker() BoundChecker {
-	return &boundChecker{}
+func NewBoundChecker(updater SizeLogUpdater) BoundChecker {
+	return &boundChecker{
+		updater: updater,
+	}
 }
 
-func (*boundChecker) Check(_ CheckBoundInput) CheckBoundOutput {
-	return CheckBoundOutput{}
+func (c *boundChecker) updateIfLoadOutOfBounds(input CheckBoundInput, bounds prob.BucketSizeBound) {
+	load := input.TotalEntries / float64(input.CountedBuckets)
+
+	if load >= bounds.Upper {
+		newSizeLog := SizeLog{
+			Value:   input.CurrentSizeLog.Value + 1,
+			Version: input.CurrentSizeLog.Version + 1,
+		}
+		c.updater.Update(input.Key, newSizeLog, UpdateOptions{})
+		return
+	}
+
+	if load < bounds.Lower {
+		newSizeLog := SizeLog{
+			Value:   input.CurrentSizeLog.Value - 1,
+			Version: input.CurrentSizeLog.Version + 1,
+		}
+		c.updater.Update(input.Key, newSizeLog, UpdateOptions{})
+		return
+	}
+}
+
+func (c *boundChecker) Check(input CheckBoundInput) CheckBoundOutput {
+	needReset := false
+	bounds := lowerAndUpperBound(input.CurrentSizeLog)
+
+	if input.CountedBuckets >= bounds.MaxCount {
+		needReset = true
+		c.updateIfLoadOutOfBounds(input, bounds)
+	}
+
+	return CheckBoundOutput{
+		NeedReset: needReset,
+	}
 }
