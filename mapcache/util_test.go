@@ -106,3 +106,15 @@ func TestUnmarshalCacheBucket_Error(t *testing.T) {
 	assert.Equal(t, ErrMissingLength, err)
 	assert.Equal(t, CacheBucketContent{}, resultBucket)
 }
+
+func BenchmarkGoMapSet(b *testing.B) {
+	type structKey struct {
+	}
+	key := &structKey{}
+	m := map[interface{}]interface{}{}
+	m[key] = 245
+
+	for n := 0; n < b.N; n++ {
+		_ = m[key]
+	}
+}

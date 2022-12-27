@@ -19,7 +19,7 @@ var _ Memcache = &MemcacheMock{}
 //
 // 		// make and configure a mocked Memcache
 // 		mockedMemcache := &MemcacheMock{
-// 			PipelineFunc: func(ctx context.Context, sess Session) Pipeline {
+// 			PipelineFunc: func(ctx context.Context, sess Session, options ...PipelineOption) Pipeline {
 // 				panic("mock out the Pipeline method")
 // 			},
 // 		}
@@ -30,7 +30,7 @@ var _ Memcache = &MemcacheMock{}
 // 	}
 type MemcacheMock struct {
 	// PipelineFunc mocks the Pipeline method.
-	PipelineFunc func(ctx context.Context, sess Session) Pipeline
+	PipelineFunc func(ctx context.Context, sess Session, options ...PipelineOption) Pipeline
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -40,39 +40,45 @@ type MemcacheMock struct {
 			Ctx context.Context
 			// Sess is the sess argument value.
 			Sess Session
+			// Options is the options argument value.
+			Options []PipelineOption
 		}
 	}
 	lockPipeline sync.RWMutex
 }
 
 // Pipeline calls PipelineFunc.
-func (mock *MemcacheMock) Pipeline(ctx context.Context, sess Session) Pipeline {
+func (mock *MemcacheMock) Pipeline(ctx context.Context, sess Session, options ...PipelineOption) Pipeline {
 	if mock.PipelineFunc == nil {
 		panic("MemcacheMock.PipelineFunc: method is nil but Memcache.Pipeline was just called")
 	}
 	callInfo := struct {
-		Ctx  context.Context
-		Sess Session
+		Ctx     context.Context
+		Sess    Session
+		Options []PipelineOption
 	}{
-		Ctx:  ctx,
-		Sess: sess,
+		Ctx:     ctx,
+		Sess:    sess,
+		Options: options,
 	}
 	mock.lockPipeline.Lock()
 	mock.calls.Pipeline = append(mock.calls.Pipeline, callInfo)
 	mock.lockPipeline.Unlock()
-	return mock.PipelineFunc(ctx, sess)
+	return mock.PipelineFunc(ctx, sess, options...)
 }
 
 // PipelineCalls gets all the calls that were made to Pipeline.
 // Check the length with:
 //     len(mockedMemcache.PipelineCalls())
 func (mock *MemcacheMock) PipelineCalls() []struct {
-	Ctx  context.Context
-	Sess Session
+	Ctx     context.Context
+	Sess    Session
+	Options []PipelineOption
 } {
 	var calls []struct {
-		Ctx  context.Context
-		Sess Session
+		Ctx     context.Context
+		Sess    Session
+		Options []PipelineOption
 	}
 	mock.lockPipeline.RLock()
 	calls = mock.calls.Pipeline
@@ -392,7 +398,7 @@ var _ SessionProvider = &SessionProviderMock{}
 //
 // 		// make and configure a mocked SessionProvider
 // 		mockedSessionProvider := &SessionProviderMock{
-// 			NewFunc: func(options ...SessionOption) Session {
+// 			NewFunc: func() Session {
 // 				panic("mock out the New method")
 // 			},
 // 		}
@@ -403,43 +409,36 @@ var _ SessionProvider = &SessionProviderMock{}
 // 	}
 type SessionProviderMock struct {
 	// NewFunc mocks the New method.
-	NewFunc func(options ...SessionOption) Session
+	NewFunc func() Session
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// New holds details about calls to the New method.
 		New []struct {
-			// Options is the options argument value.
-			Options []SessionOption
 		}
 	}
 	lockNew sync.RWMutex
 }
 
 // New calls NewFunc.
-func (mock *SessionProviderMock) New(options ...SessionOption) Session {
+func (mock *SessionProviderMock) New() Session {
 	if mock.NewFunc == nil {
 		panic("SessionProviderMock.NewFunc: method is nil but SessionProvider.New was just called")
 	}
 	callInfo := struct {
-		Options []SessionOption
-	}{
-		Options: options,
-	}
+	}{}
 	mock.lockNew.Lock()
 	mock.calls.New = append(mock.calls.New, callInfo)
 	mock.lockNew.Unlock()
-	return mock.NewFunc(options...)
+	return mock.NewFunc()
 }
 
 // NewCalls gets all the calls that were made to New.
 // Check the length with:
 //     len(mockedSessionProvider.NewCalls())
 func (mock *SessionProviderMock) NewCalls() []struct {
-	Options []SessionOption
 } {
 	var calls []struct {
-		Options []SessionOption
 	}
 	mock.lockNew.RLock()
 	calls = mock.calls.New
@@ -466,9 +465,6 @@ var _ Session = &SessionMock{}
 // 			ExecuteFunc: func()  {
 // 				panic("mock out the Execute method")
 // 			},
-// 			GetParamsFunc: func() interface{} {
-// 				panic("mock out the GetParams method")
-// 			},
 // 		}
 //
 // 		// use mockedSession in code that requires Session
@@ -484,9 +480,6 @@ type SessionMock struct {
 
 	// ExecuteFunc mocks the Execute method.
 	ExecuteFunc func()
-
-	// GetParamsFunc mocks the GetParams method.
-	GetParamsFunc func() interface{}
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -505,14 +498,10 @@ type SessionMock struct {
 		// Execute holds details about calls to the Execute method.
 		Execute []struct {
 		}
-		// GetParams holds details about calls to the GetParams method.
-		GetParams []struct {
-		}
 	}
 	lockAddDelayedCall sync.RWMutex
 	lockAddNextCall    sync.RWMutex
 	lockExecute        sync.RWMutex
-	lockGetParams      sync.RWMutex
 }
 
 // AddDelayedCall calls AddDelayedCallFunc.
@@ -607,32 +596,6 @@ func (mock *SessionMock) ExecuteCalls() []struct {
 	return calls
 }
 
-// GetParams calls GetParamsFunc.
-func (mock *SessionMock) GetParams() interface{} {
-	if mock.GetParamsFunc == nil {
-		panic("SessionMock.GetParamsFunc: method is nil but Session.GetParams was just called")
-	}
-	callInfo := struct {
-	}{}
-	mock.lockGetParams.Lock()
-	mock.calls.GetParams = append(mock.calls.GetParams, callInfo)
-	mock.lockGetParams.Unlock()
-	return mock.GetParamsFunc()
-}
-
-// GetParamsCalls gets all the calls that were made to GetParams.
-// Check the length with:
-//     len(mockedSession.GetParamsCalls())
-func (mock *SessionMock) GetParamsCalls() []struct {
-} {
-	var calls []struct {
-	}
-	mock.lockGetParams.RLock()
-	calls = mock.calls.GetParams
-	mock.lockGetParams.RUnlock()
-	return calls
-}
-
 // Ensure, that FillerMock does implement Filler.
 // If this is not the case, regenerate this file with moq.
 var _ Filler = &FillerMock{}
@@ -720,7 +683,7 @@ var _ FillerFactory = &FillerFactoryMock{}
 //
 // 		// make and configure a mocked FillerFactory
 // 		mockedFillerFactory := &FillerFactoryMock{
-// 			NewFunc: func(sess Session) Filler {
+// 			NewFunc: func(sess Session, params interface{}) Filler {
 // 				panic("mock out the New method")
 // 			},
 // 		}
@@ -731,7 +694,7 @@ var _ FillerFactory = &FillerFactoryMock{}
 // 	}
 type FillerFactoryMock struct {
 	// NewFunc mocks the New method.
-	NewFunc func(sess Session) Filler
+	NewFunc func(sess Session, params interface{}) Filler
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -739,35 +702,41 @@ type FillerFactoryMock struct {
 		New []struct {
 			// Sess is the sess argument value.
 			Sess Session
+			// Params is the params argument value.
+			Params interface{}
 		}
 	}
 	lockNew sync.RWMutex
 }
 
 // New calls NewFunc.
-func (mock *FillerFactoryMock) New(sess Session) Filler {
+func (mock *FillerFactoryMock) New(sess Session, params interface{}) Filler {
 	if mock.NewFunc == nil {
 		panic("FillerFactoryMock.NewFunc: method is nil but FillerFactory.New was just called")
 	}
 	callInfo := struct {
-		Sess Session
+		Sess   Session
+		Params interface{}
 	}{
-		Sess: sess,
+		Sess:   sess,
+		Params: params,
 	}
 	mock.lockNew.Lock()
 	mock.calls.New = append(mock.calls.New, callInfo)
 	mock.lockNew.Unlock()
-	return mock.NewFunc(sess)
+	return mock.NewFunc(sess, params)
 }
 
 // NewCalls gets all the calls that were made to New.
 // Check the length with:
 //     len(mockedFillerFactory.NewCalls())
 func (mock *FillerFactoryMock) NewCalls() []struct {
-	Sess Session
+	Sess   Session
+	Params interface{}
 } {
 	var calls []struct {
-		Sess Session
+		Sess   Session
+		Params interface{}
 	}
 	mock.lockNew.RLock()
 	calls = mock.calls.New

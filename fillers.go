@@ -35,7 +35,7 @@ func NewMultiGetFillerFactory(getFn MultiGetFunc) FillerFactory {
 }
 
 // New ...
-func (*multiGetFillerFactory) New(sess Session) Filler {
+func (*multiGetFillerFactory) New(sess Session, _ interface{}) Filler {
 	return &multiGetFiller{
 		sess: sess,
 	}

@@ -32,13 +32,14 @@ type fillerPipelineImpl struct {
 var _ Pipeline = &fillerPipelineImpl{}
 
 // Pipeline ...
-func (m *fillerMemcacheImpl) Pipeline(ctx context.Context, sess Session) Pipeline {
+func (m *fillerMemcacheImpl) Pipeline(ctx context.Context, sess Session, options ...PipelineOption) Pipeline {
+	opts := computePipelineOptions(options)
 	return &fillerPipelineImpl{
 		Pipeline: m.origin.Pipeline(ctx, sess),
 
 		ctx:    ctx,
 		sess:   sess,
-		filler: m.factory.New(sess),
+		filler: m.factory.New(sess, opts.newFillerParams),
 	}
 }
 

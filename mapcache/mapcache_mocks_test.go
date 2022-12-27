@@ -95,7 +95,7 @@ var _ FillerFactory = &FillerFactoryMock{}
 //
 // 		// make and configure a mocked FillerFactory
 // 		mockedFillerFactory := &FillerFactoryMock{
-// 			NewFunc: func() Filler {
+// 			NewFunc: func(params interface{}) Filler {
 // 				panic("mock out the New method")
 // 			},
 // 		}
@@ -106,36 +106,43 @@ var _ FillerFactory = &FillerFactoryMock{}
 // 	}
 type FillerFactoryMock struct {
 	// NewFunc mocks the New method.
-	NewFunc func() Filler
+	NewFunc func(params interface{}) Filler
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// New holds details about calls to the New method.
 		New []struct {
+			// Params is the params argument value.
+			Params interface{}
 		}
 	}
 	lockNew sync.RWMutex
 }
 
 // New calls NewFunc.
-func (mock *FillerFactoryMock) New() Filler {
+func (mock *FillerFactoryMock) New(params interface{}) Filler {
 	if mock.NewFunc == nil {
 		panic("FillerFactoryMock.NewFunc: method is nil but FillerFactory.New was just called")
 	}
 	callInfo := struct {
-	}{}
+		Params interface{}
+	}{
+		Params: params,
+	}
 	mock.lockNew.Lock()
 	mock.calls.New = append(mock.calls.New, callInfo)
 	mock.lockNew.Unlock()
-	return mock.NewFunc()
+	return mock.NewFunc(params)
 }
 
 // NewCalls gets all the calls that were made to New.
 // Check the length with:
 //     len(mockedFillerFactory.NewCalls())
 func (mock *FillerFactoryMock) NewCalls() []struct {
+	Params interface{}
 } {
 	var calls []struct {
+		Params interface{}
 	}
 	mock.lockNew.RLock()
 	calls = mock.calls.New

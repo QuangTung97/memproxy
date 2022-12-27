@@ -37,7 +37,7 @@ func newMapCacheTest(sizeLog SizeLog) *mapCacheTest {
 
 	filler := &FillerMock{}
 	fillerFactory := &FillerFactoryMock{
-		NewFunc: func() Filler {
+		NewFunc: func(params interface{}) Filler {
 			return filler
 		},
 	}
@@ -49,7 +49,9 @@ func newMapCacheTest(sizeLog SizeLog) *mapCacheTest {
 		return nil
 	}
 
-	client.PipelineFunc = func(ctx context.Context, sess memproxy.Session) memproxy.Pipeline {
+	client.PipelineFunc = func(
+		ctx context.Context, sess memproxy.Session, options ...memproxy.PipelineOption,
+	) memproxy.Pipeline {
 		return pipe
 	}
 

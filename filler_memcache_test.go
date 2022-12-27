@@ -31,18 +31,18 @@ func newFillerMemcacheTest() *fillerMemcacheTest {
 
 	filler := &FillerMock{}
 	fillerFactory := &FillerFactoryMock{
-		NewFunc: func(sess Session) Filler {
+		NewFunc: func(sess Session, params interface{}) Filler {
 			return filler
 		},
 	}
 
 	sess := &SessionMock{}
 
-	provider.NewFunc = func(options ...SessionOption) Session {
+	provider.NewFunc = func() Session {
 		return sess
 	}
 
-	origin.PipelineFunc = func(ctx context.Context, sess Session) Pipeline {
+	origin.PipelineFunc = func(ctx context.Context, sess Session, options ...PipelineOption) Pipeline {
 		return originPipe
 	}
 

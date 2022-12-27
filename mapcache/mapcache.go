@@ -49,7 +49,8 @@ type Invalidator interface {
 
 // FillerFactory MUST BE thread safe
 type FillerFactory interface {
-	New() Filler
+	// New with params is pipeline filler params
+	New(params interface{}) Filler
 }
 
 // Filler not need to be thread safe

@@ -10,7 +10,7 @@ import (
 // Memcache represents a generic Memcache interface
 // implementations of this interface must be thread safe
 type Memcache interface {
-	Pipeline(ctx context.Context, sess Session) Pipeline
+	Pipeline(ctx context.Context, sess Session, options ...PipelineOption) Pipeline
 }
 
 // Pipeline represents a generic Pipeline
@@ -23,23 +23,9 @@ type Pipeline interface {
 	Finish()
 }
 
-type sessionOptions struct {
-	params interface{}
-}
-
-// SessionOption ...
-type SessionOption func(opts *sessionOptions)
-
-// WithSessionParams ...
-func WithSessionParams(params interface{}) SessionOption {
-	return func(opts *sessionOptions) {
-		opts.params = params
-	}
-}
-
 // SessionProvider for controlling delayed tasks
 type SessionProvider interface {
-	New(options ...SessionOption) Session
+	New() Session
 }
 
 // Session controlling session values & delayed tasks
@@ -47,8 +33,6 @@ type Session interface {
 	AddNextCall(fn func())
 	AddDelayedCall(d time.Duration, fn func())
 	Execute()
-
-	GetParams() interface{}
 }
 
 // GetOptions specify GET options
@@ -111,10 +95,34 @@ type FillResponse struct {
 
 // FillerFactory must be thread safe
 type FillerFactory interface {
-	New(sess Session) Filler
+	New(sess Session, params interface{}) Filler
 }
 
 // Filler for filling memcache contents, implementation of this interface NOT need to be thread safe
 type Filler interface {
 	Fill(ctx context.Context, params interface{}, completeFn func(resp FillResponse, err error))
+}
+
+type pipelineOptions struct {
+	newFillerParams interface{}
+}
+
+func computePipelineOptions(options []PipelineOption) pipelineOptions {
+	opts := pipelineOptions{
+		newFillerParams: nil,
+	}
+	for _, fn := range options {
+		fn(&opts)
+	}
+	return opts
+}
+
+// PipelineOption ...
+type PipelineOption func(opts *pipelineOptions)
+
+// WithNewFillerParams ...
+func WithNewFillerParams(params interface{}) PipelineOption {
+	return func(opts *pipelineOptions) {
+		opts.newFillerParams = params
+	}
 }

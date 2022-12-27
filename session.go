@@ -21,16 +21,11 @@ func NewSessionProvider(
 }
 
 // New ...
-func (p *sessionProviderImpl) New(options ...SessionOption) Session {
-	opts := sessionOptions{}
-	for _, fn := range options {
-		fn(&opts)
-	}
-	return &sessionImpl{opts: opts, provider: p}
+func (p *sessionProviderImpl) New() Session {
+	return &sessionImpl{provider: p}
 }
 
 type sessionImpl struct {
-	opts      sessionOptions
 	provider  *sessionProviderImpl
 	nextCalls []func()
 	heap      delayedCallHeap
@@ -54,11 +49,6 @@ func (s *sessionImpl) AddDelayedCall(d time.Duration, fn func()) {
 		startedAt: s.provider.nowFn().Add(d),
 		call:      fn,
 	})
-}
-
-// GetParams ...
-func (s *sessionImpl) GetParams() interface{} {
-	return s.opts.params
 }
 
 // Execute ...

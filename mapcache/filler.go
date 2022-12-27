@@ -16,10 +16,10 @@ type fillerImpl struct {
 
 var _ memproxy.FillerFactory = &fillerFactoryImpl{}
 
-func (f *fillerFactoryImpl) New(sess memproxy.Session) memproxy.Filler {
+func (f *fillerFactoryImpl) New(sess memproxy.Session, params interface{}) memproxy.Filler {
 	return &fillerImpl{
 		sess:   sess,
-		filler: f.factory.New(),
+		filler: f.factory.New(params),
 	}
 }
 
