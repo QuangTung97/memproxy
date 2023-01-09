@@ -47,7 +47,7 @@ type GetResponse struct {
 
 // LeaseGetOptions lease get options
 type LeaseGetOptions struct {
-	FillParams interface{}
+	FillParams interface{} // deprecated TODO
 }
 
 // LeaseGetStatus status of lease get
