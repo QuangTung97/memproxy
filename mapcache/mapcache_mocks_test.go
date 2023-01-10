@@ -14,19 +14,19 @@ var _ Filler = &FillerMock{}
 
 // FillerMock is a mock implementation of Filler.
 //
-// 	func TestSomethingThatUsesFiller(t *testing.T) {
+//	func TestSomethingThatUsesFiller(t *testing.T) {
 //
-// 		// make and configure a mocked Filler
-// 		mockedFiller := &FillerMock{
-// 			GetBucketFunc: func(ctx context.Context, options NewOptions, hashRange HashRange) func() (GetBucketResponse, error) {
-// 				panic("mock out the GetBucket method")
-// 			},
-// 		}
+//		// make and configure a mocked Filler
+//		mockedFiller := &FillerMock{
+//			GetBucketFunc: func(ctx context.Context, options NewOptions, hashRange HashRange) func() (GetBucketResponse, error) {
+//				panic("mock out the GetBucket method")
+//			},
+//		}
 //
-// 		// use mockedFiller in code that requires Filler
-// 		// and then make assertions.
+//		// use mockedFiller in code that requires Filler
+//		// and then make assertions.
 //
-// 	}
+//	}
 type FillerMock struct {
 	// GetBucketFunc mocks the GetBucket method.
 	GetBucketFunc func(ctx context.Context, options NewOptions, hashRange HashRange) func() (GetBucketResponse, error)
@@ -68,7 +68,8 @@ func (mock *FillerMock) GetBucket(ctx context.Context, options NewOptions, hashR
 
 // GetBucketCalls gets all the calls that were made to GetBucket.
 // Check the length with:
-//     len(mockedFiller.GetBucketCalls())
+//
+//	len(mockedFiller.GetBucketCalls())
 func (mock *FillerMock) GetBucketCalls() []struct {
 	Ctx       context.Context
 	Options   NewOptions
@@ -91,19 +92,19 @@ var _ FillerFactory = &FillerFactoryMock{}
 
 // FillerFactoryMock is a mock implementation of FillerFactory.
 //
-// 	func TestSomethingThatUsesFillerFactory(t *testing.T) {
+//	func TestSomethingThatUsesFillerFactory(t *testing.T) {
 //
-// 		// make and configure a mocked FillerFactory
-// 		mockedFillerFactory := &FillerFactoryMock{
-// 			NewFunc: func(params interface{}) Filler {
-// 				panic("mock out the New method")
-// 			},
-// 		}
+//		// make and configure a mocked FillerFactory
+//		mockedFillerFactory := &FillerFactoryMock{
+//			NewFunc: func(params interface{}) Filler {
+//				panic("mock out the New method")
+//			},
+//		}
 //
-// 		// use mockedFillerFactory in code that requires FillerFactory
-// 		// and then make assertions.
+//		// use mockedFillerFactory in code that requires FillerFactory
+//		// and then make assertions.
 //
-// 	}
+//	}
 type FillerFactoryMock struct {
 	// NewFunc mocks the New method.
 	NewFunc func(params interface{}) Filler
@@ -137,7 +138,8 @@ func (mock *FillerFactoryMock) New(params interface{}) Filler {
 
 // NewCalls gets all the calls that were made to New.
 // Check the length with:
-//     len(mockedFillerFactory.NewCalls())
+//
+//	len(mockedFillerFactory.NewCalls())
 func (mock *FillerFactoryMock) NewCalls() []struct {
 	Params interface{}
 } {

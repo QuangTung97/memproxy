@@ -15,19 +15,19 @@ var _ Memcache = &MemcacheMock{}
 
 // MemcacheMock is a mock implementation of Memcache.
 //
-// 	func TestSomethingThatUsesMemcache(t *testing.T) {
+//	func TestSomethingThatUsesMemcache(t *testing.T) {
 //
-// 		// make and configure a mocked Memcache
-// 		mockedMemcache := &MemcacheMock{
-// 			PipelineFunc: func(ctx context.Context, sess Session, options ...PipelineOption) Pipeline {
-// 				panic("mock out the Pipeline method")
-// 			},
-// 		}
+//		// make and configure a mocked Memcache
+//		mockedMemcache := &MemcacheMock{
+//			PipelineFunc: func(ctx context.Context, sess Session, options ...PipelineOption) Pipeline {
+//				panic("mock out the Pipeline method")
+//			},
+//		}
 //
-// 		// use mockedMemcache in code that requires Memcache
-// 		// and then make assertions.
+//		// use mockedMemcache in code that requires Memcache
+//		// and then make assertions.
 //
-// 	}
+//	}
 type MemcacheMock struct {
 	// PipelineFunc mocks the Pipeline method.
 	PipelineFunc func(ctx context.Context, sess Session, options ...PipelineOption) Pipeline
@@ -69,7 +69,8 @@ func (mock *MemcacheMock) Pipeline(ctx context.Context, sess Session, options ..
 
 // PipelineCalls gets all the calls that were made to Pipeline.
 // Check the length with:
-//     len(mockedMemcache.PipelineCalls())
+//
+//	len(mockedMemcache.PipelineCalls())
 func (mock *MemcacheMock) PipelineCalls() []struct {
 	Ctx     context.Context
 	Sess    Session
@@ -92,34 +93,34 @@ var _ Pipeline = &PipelineMock{}
 
 // PipelineMock is a mock implementation of Pipeline.
 //
-// 	func TestSomethingThatUsesPipeline(t *testing.T) {
+//	func TestSomethingThatUsesPipeline(t *testing.T) {
 //
-// 		// make and configure a mocked Pipeline
-// 		mockedPipeline := &PipelineMock{
-// 			DeleteFunc: func(key string, options DeleteOptions) func() (DeleteResponse, error) {
-// 				panic("mock out the Delete method")
-// 			},
-// 			ExecuteFunc: func()  {
-// 				panic("mock out the Execute method")
-// 			},
-// 			FinishFunc: func()  {
-// 				panic("mock out the Finish method")
-// 			},
-// 			GetFunc: func(key string, options GetOptions) func() (GetResponse, error) {
-// 				panic("mock out the Get method")
-// 			},
-// 			LeaseGetFunc: func(key string, options LeaseGetOptions) func() (LeaseGetResponse, error) {
-// 				panic("mock out the LeaseGet method")
-// 			},
-// 			LeaseSetFunc: func(key string, data []byte, cas uint64, options LeaseSetOptions) func() (LeaseSetResponse, error) {
-// 				panic("mock out the LeaseSet method")
-// 			},
-// 		}
+//		// make and configure a mocked Pipeline
+//		mockedPipeline := &PipelineMock{
+//			DeleteFunc: func(key string, options DeleteOptions) func() (DeleteResponse, error) {
+//				panic("mock out the Delete method")
+//			},
+//			ExecuteFunc: func()  {
+//				panic("mock out the Execute method")
+//			},
+//			FinishFunc: func()  {
+//				panic("mock out the Finish method")
+//			},
+//			GetFunc: func(key string, options GetOptions) func() (GetResponse, error) {
+//				panic("mock out the Get method")
+//			},
+//			LeaseGetFunc: func(key string, options LeaseGetOptions) func() (LeaseGetResponse, error) {
+//				panic("mock out the LeaseGet method")
+//			},
+//			LeaseSetFunc: func(key string, data []byte, cas uint64, options LeaseSetOptions) func() (LeaseSetResponse, error) {
+//				panic("mock out the LeaseSet method")
+//			},
+//		}
 //
-// 		// use mockedPipeline in code that requires Pipeline
-// 		// and then make assertions.
+//		// use mockedPipeline in code that requires Pipeline
+//		// and then make assertions.
 //
-// 	}
+//	}
 type PipelineMock struct {
 	// DeleteFunc mocks the Delete method.
 	DeleteFunc func(key string, options DeleteOptions) func() (DeleteResponse, error)
@@ -208,7 +209,8 @@ func (mock *PipelineMock) Delete(key string, options DeleteOptions) func() (Dele
 
 // DeleteCalls gets all the calls that were made to Delete.
 // Check the length with:
-//     len(mockedPipeline.DeleteCalls())
+//
+//	len(mockedPipeline.DeleteCalls())
 func (mock *PipelineMock) DeleteCalls() []struct {
 	Key     string
 	Options DeleteOptions
@@ -238,7 +240,8 @@ func (mock *PipelineMock) Execute() {
 
 // ExecuteCalls gets all the calls that were made to Execute.
 // Check the length with:
-//     len(mockedPipeline.ExecuteCalls())
+//
+//	len(mockedPipeline.ExecuteCalls())
 func (mock *PipelineMock) ExecuteCalls() []struct {
 } {
 	var calls []struct {
@@ -264,7 +267,8 @@ func (mock *PipelineMock) Finish() {
 
 // FinishCalls gets all the calls that were made to Finish.
 // Check the length with:
-//     len(mockedPipeline.FinishCalls())
+//
+//	len(mockedPipeline.FinishCalls())
 func (mock *PipelineMock) FinishCalls() []struct {
 } {
 	var calls []struct {
@@ -295,7 +299,8 @@ func (mock *PipelineMock) Get(key string, options GetOptions) func() (GetRespons
 
 // GetCalls gets all the calls that were made to Get.
 // Check the length with:
-//     len(mockedPipeline.GetCalls())
+//
+//	len(mockedPipeline.GetCalls())
 func (mock *PipelineMock) GetCalls() []struct {
 	Key     string
 	Options GetOptions
@@ -330,7 +335,8 @@ func (mock *PipelineMock) LeaseGet(key string, options LeaseGetOptions) func() (
 
 // LeaseGetCalls gets all the calls that were made to LeaseGet.
 // Check the length with:
-//     len(mockedPipeline.LeaseGetCalls())
+//
+//	len(mockedPipeline.LeaseGetCalls())
 func (mock *PipelineMock) LeaseGetCalls() []struct {
 	Key     string
 	Options LeaseGetOptions
@@ -369,7 +375,8 @@ func (mock *PipelineMock) LeaseSet(key string, data []byte, cas uint64, options 
 
 // LeaseSetCalls gets all the calls that were made to LeaseSet.
 // Check the length with:
-//     len(mockedPipeline.LeaseSetCalls())
+//
+//	len(mockedPipeline.LeaseSetCalls())
 func (mock *PipelineMock) LeaseSetCalls() []struct {
 	Key     string
 	Data    []byte
@@ -394,19 +401,19 @@ var _ SessionProvider = &SessionProviderMock{}
 
 // SessionProviderMock is a mock implementation of SessionProvider.
 //
-// 	func TestSomethingThatUsesSessionProvider(t *testing.T) {
+//	func TestSomethingThatUsesSessionProvider(t *testing.T) {
 //
-// 		// make and configure a mocked SessionProvider
-// 		mockedSessionProvider := &SessionProviderMock{
-// 			NewFunc: func() Session {
-// 				panic("mock out the New method")
-// 			},
-// 		}
+//		// make and configure a mocked SessionProvider
+//		mockedSessionProvider := &SessionProviderMock{
+//			NewFunc: func() Session {
+//				panic("mock out the New method")
+//			},
+//		}
 //
-// 		// use mockedSessionProvider in code that requires SessionProvider
-// 		// and then make assertions.
+//		// use mockedSessionProvider in code that requires SessionProvider
+//		// and then make assertions.
 //
-// 	}
+//	}
 type SessionProviderMock struct {
 	// NewFunc mocks the New method.
 	NewFunc func() Session
@@ -435,7 +442,8 @@ func (mock *SessionProviderMock) New() Session {
 
 // NewCalls gets all the calls that were made to New.
 // Check the length with:
-//     len(mockedSessionProvider.NewCalls())
+//
+//	len(mockedSessionProvider.NewCalls())
 func (mock *SessionProviderMock) NewCalls() []struct {
 } {
 	var calls []struct {
@@ -452,25 +460,25 @@ var _ Session = &SessionMock{}
 
 // SessionMock is a mock implementation of Session.
 //
-// 	func TestSomethingThatUsesSession(t *testing.T) {
+//	func TestSomethingThatUsesSession(t *testing.T) {
 //
-// 		// make and configure a mocked Session
-// 		mockedSession := &SessionMock{
-// 			AddDelayedCallFunc: func(d time.Duration, fn func())  {
-// 				panic("mock out the AddDelayedCall method")
-// 			},
-// 			AddNextCallFunc: func(fn func())  {
-// 				panic("mock out the AddNextCall method")
-// 			},
-// 			ExecuteFunc: func()  {
-// 				panic("mock out the Execute method")
-// 			},
-// 		}
+//		// make and configure a mocked Session
+//		mockedSession := &SessionMock{
+//			AddDelayedCallFunc: func(d time.Duration, fn func())  {
+//				panic("mock out the AddDelayedCall method")
+//			},
+//			AddNextCallFunc: func(fn func())  {
+//				panic("mock out the AddNextCall method")
+//			},
+//			ExecuteFunc: func()  {
+//				panic("mock out the Execute method")
+//			},
+//		}
 //
-// 		// use mockedSession in code that requires Session
-// 		// and then make assertions.
+//		// use mockedSession in code that requires Session
+//		// and then make assertions.
 //
-// 	}
+//	}
 type SessionMock struct {
 	// AddDelayedCallFunc mocks the AddDelayedCall method.
 	AddDelayedCallFunc func(d time.Duration, fn func())
@@ -524,7 +532,8 @@ func (mock *SessionMock) AddDelayedCall(d time.Duration, fn func()) {
 
 // AddDelayedCallCalls gets all the calls that were made to AddDelayedCall.
 // Check the length with:
-//     len(mockedSession.AddDelayedCallCalls())
+//
+//	len(mockedSession.AddDelayedCallCalls())
 func (mock *SessionMock) AddDelayedCallCalls() []struct {
 	D  time.Duration
 	Fn func()
@@ -557,7 +566,8 @@ func (mock *SessionMock) AddNextCall(fn func()) {
 
 // AddNextCallCalls gets all the calls that were made to AddNextCall.
 // Check the length with:
-//     len(mockedSession.AddNextCallCalls())
+//
+//	len(mockedSession.AddNextCallCalls())
 func (mock *SessionMock) AddNextCallCalls() []struct {
 	Fn func()
 } {
@@ -585,7 +595,8 @@ func (mock *SessionMock) Execute() {
 
 // ExecuteCalls gets all the calls that were made to Execute.
 // Check the length with:
-//     len(mockedSession.ExecuteCalls())
+//
+//	len(mockedSession.ExecuteCalls())
 func (mock *SessionMock) ExecuteCalls() []struct {
 } {
 	var calls []struct {
@@ -602,19 +613,19 @@ var _ Filler = &FillerMock{}
 
 // FillerMock is a mock implementation of Filler.
 //
-// 	func TestSomethingThatUsesFiller(t *testing.T) {
+//	func TestSomethingThatUsesFiller(t *testing.T) {
 //
-// 		// make and configure a mocked Filler
-// 		mockedFiller := &FillerMock{
-// 			FillFunc: func(ctx context.Context, params interface{}, completeFn func(resp FillResponse, err error))  {
-// 				panic("mock out the Fill method")
-// 			},
-// 		}
+//		// make and configure a mocked Filler
+//		mockedFiller := &FillerMock{
+//			FillFunc: func(ctx context.Context, params interface{}, completeFn func(resp FillResponse, err error))  {
+//				panic("mock out the Fill method")
+//			},
+//		}
 //
-// 		// use mockedFiller in code that requires Filler
-// 		// and then make assertions.
+//		// use mockedFiller in code that requires Filler
+//		// and then make assertions.
 //
-// 	}
+//	}
 type FillerMock struct {
 	// FillFunc mocks the Fill method.
 	FillFunc func(ctx context.Context, params interface{}, completeFn func(resp FillResponse, err error))
@@ -656,7 +667,8 @@ func (mock *FillerMock) Fill(ctx context.Context, params interface{}, completeFn
 
 // FillCalls gets all the calls that were made to Fill.
 // Check the length with:
-//     len(mockedFiller.FillCalls())
+//
+//	len(mockedFiller.FillCalls())
 func (mock *FillerMock) FillCalls() []struct {
 	Ctx        context.Context
 	Params     interface{}
@@ -679,19 +691,19 @@ var _ FillerFactory = &FillerFactoryMock{}
 
 // FillerFactoryMock is a mock implementation of FillerFactory.
 //
-// 	func TestSomethingThatUsesFillerFactory(t *testing.T) {
+//	func TestSomethingThatUsesFillerFactory(t *testing.T) {
 //
-// 		// make and configure a mocked FillerFactory
-// 		mockedFillerFactory := &FillerFactoryMock{
-// 			NewFunc: func(sess Session, params interface{}) Filler {
-// 				panic("mock out the New method")
-// 			},
-// 		}
+//		// make and configure a mocked FillerFactory
+//		mockedFillerFactory := &FillerFactoryMock{
+//			NewFunc: func(sess Session, params interface{}) Filler {
+//				panic("mock out the New method")
+//			},
+//		}
 //
-// 		// use mockedFillerFactory in code that requires FillerFactory
-// 		// and then make assertions.
+//		// use mockedFillerFactory in code that requires FillerFactory
+//		// and then make assertions.
 //
-// 	}
+//	}
 type FillerFactoryMock struct {
 	// NewFunc mocks the New method.
 	NewFunc func(sess Session, params interface{}) Filler
@@ -729,7 +741,8 @@ func (mock *FillerFactoryMock) New(sess Session, params interface{}) Filler {
 
 // NewCalls gets all the calls that were made to New.
 // Check the length with:
-//     len(mockedFillerFactory.NewCalls())
+//
+//	len(mockedFillerFactory.NewCalls())
 func (mock *FillerFactoryMock) NewCalls() []struct {
 	Sess   Session
 	Params interface{}

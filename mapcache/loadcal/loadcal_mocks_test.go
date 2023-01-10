@@ -13,19 +13,19 @@ var _ BoundChecker = &BoundCheckerMock{}
 
 // BoundCheckerMock is a mock implementation of BoundChecker.
 //
-// 	func TestSomethingThatUsesBoundChecker(t *testing.T) {
+//	func TestSomethingThatUsesBoundChecker(t *testing.T) {
 //
-// 		// make and configure a mocked BoundChecker
-// 		mockedBoundChecker := &BoundCheckerMock{
-// 			CheckFunc: func(input CheckBoundInput) CheckBoundOutput {
-// 				panic("mock out the Check method")
-// 			},
-// 		}
+//		// make and configure a mocked BoundChecker
+//		mockedBoundChecker := &BoundCheckerMock{
+//			CheckFunc: func(input CheckBoundInput) CheckBoundOutput {
+//				panic("mock out the Check method")
+//			},
+//		}
 //
-// 		// use mockedBoundChecker in code that requires BoundChecker
-// 		// and then make assertions.
+//		// use mockedBoundChecker in code that requires BoundChecker
+//		// and then make assertions.
 //
-// 	}
+//	}
 type BoundCheckerMock struct {
 	// CheckFunc mocks the Check method.
 	CheckFunc func(input CheckBoundInput) CheckBoundOutput
@@ -59,7 +59,8 @@ func (mock *BoundCheckerMock) Check(input CheckBoundInput) CheckBoundOutput {
 
 // CheckCalls gets all the calls that were made to Check.
 // Check the length with:
-//     len(mockedBoundChecker.CheckCalls())
+//
+//	len(mockedBoundChecker.CheckCalls())
 func (mock *BoundCheckerMock) CheckCalls() []struct {
 	Input CheckBoundInput
 } {
@@ -78,19 +79,19 @@ var _ SizeLogUpdater = &SizeLogUpdaterMock{}
 
 // SizeLogUpdaterMock is a mock implementation of SizeLogUpdater.
 //
-// 	func TestSomethingThatUsesSizeLogUpdater(t *testing.T) {
+//	func TestSomethingThatUsesSizeLogUpdater(t *testing.T) {
 //
-// 		// make and configure a mocked SizeLogUpdater
-// 		mockedSizeLogUpdater := &SizeLogUpdaterMock{
-// 			UpdateFunc: func(key string, sizeLog SizeLog, options UpdateOptions)  {
-// 				panic("mock out the Update method")
-// 			},
-// 		}
+//		// make and configure a mocked SizeLogUpdater
+//		mockedSizeLogUpdater := &SizeLogUpdaterMock{
+//			UpdateFunc: func(key string, sizeLog SizeLog, options UpdateOptions)  {
+//				panic("mock out the Update method")
+//			},
+//		}
 //
-// 		// use mockedSizeLogUpdater in code that requires SizeLogUpdater
-// 		// and then make assertions.
+//		// use mockedSizeLogUpdater in code that requires SizeLogUpdater
+//		// and then make assertions.
 //
-// 	}
+//	}
 type SizeLogUpdaterMock struct {
 	// UpdateFunc mocks the Update method.
 	UpdateFunc func(key string, sizeLog SizeLog, options UpdateOptions)
@@ -132,7 +133,8 @@ func (mock *SizeLogUpdaterMock) Update(key string, sizeLog SizeLog, options Upda
 
 // UpdateCalls gets all the calls that were made to Update.
 // Check the length with:
-//     len(mockedSizeLogUpdater.UpdateCalls())
+//
+//	len(mockedSizeLogUpdater.UpdateCalls())
 func (mock *SizeLogUpdaterMock) UpdateCalls() []struct {
 	Key     string
 	SizeLog SizeLog
