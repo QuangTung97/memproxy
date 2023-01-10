@@ -12,6 +12,8 @@ type Value interface {
 
 // Key ...
 type Key interface {
+	comparable
+
 	String() string
 }
 
@@ -77,6 +79,8 @@ func (i *Item[T, K]) handleLeaseGranted(
 // Get ...
 func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 	keyStr := key.String()
+
+	// TODO Deduplicate Key
 
 	leaseGetFn := i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
 

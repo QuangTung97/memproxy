@@ -39,8 +39,6 @@ func unmarshalUser(data []byte) (userValue, error) {
 	return user, err
 }
 
-var _ Key = userKey{}
-
 func (k userKey) String() string {
 	return k.Tenant + ":" + k.Name
 }
