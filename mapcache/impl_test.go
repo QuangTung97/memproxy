@@ -37,7 +37,7 @@ func newMapCacheTest(sizeLog SizeLog) *mapCacheTest {
 
 	filler := &FillerMock{}
 	fillerFactory := &FillerFactoryMock{
-		NewFunc: func(params interface{}) Filler {
+		NewFunc: func(params any) Filler {
 			return filler
 		},
 	}

@@ -20,12 +20,12 @@ type MultiGetResponse struct {
 
 // MultiGetOutput ...
 type MultiGetOutput struct {
-	Key  interface{}
+	Key  any
 	Data []byte
 }
 
 // MultiGetFunc ...
-type MultiGetFunc func(ctx context.Context, params interface{}, keys []interface{}) (MultiGetResponse, error)
+type MultiGetFunc func(ctx context.Context, params any, keys []any) (MultiGetResponse, error)
 
 // NewMultiGetFillerFactory ...
 func NewMultiGetFillerFactory(getFn MultiGetFunc) FillerFactory {
@@ -35,7 +35,7 @@ func NewMultiGetFillerFactory(getFn MultiGetFunc) FillerFactory {
 }
 
 // New ...
-func (*multiGetFillerFactory) New(sess Session, _ interface{}) Filler {
+func (*multiGetFillerFactory) New(sess Session, _ any) Filler {
 	return &multiGetFiller{
 		sess: sess,
 	}
@@ -43,13 +43,13 @@ func (*multiGetFillerFactory) New(sess Session, _ interface{}) Filler {
 
 // Fill ...
 func (*multiGetFiller) Fill(
-	ctx context.Context, params interface{},
+	ctx context.Context, params any,
 	completeFn func(resp FillResponse, err error),
 ) {
 	fmt.Println(ctx, params, &completeFn)
 }
 
 // NewMultiGetParams ...
-func NewMultiGetParams(key interface{}) {
+func NewMultiGetParams(key any) {
 	fmt.Println(key)
 }

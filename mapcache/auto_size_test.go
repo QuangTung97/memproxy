@@ -42,7 +42,7 @@ func newAutoSizeTest() *autoSizeTest {
 
 	filler := &FillerMock{}
 	fillerFactory := &FillerFactoryMock{
-		NewFunc: func(params interface{}) Filler {
+		NewFunc: func(params any) Filler {
 			return filler
 		},
 	}

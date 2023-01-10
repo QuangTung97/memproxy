@@ -15,6 +15,7 @@ type Key interface {
 	String() string
 }
 
+// Unmarshaler ...
 type Unmarshaler[T any] func(data []byte) (T, error)
 
 // Filler ...
@@ -50,6 +51,29 @@ type getResultType[T any] struct {
 	err  error
 }
 
+func (i *Item[T, K]) handleLeaseGranted(
+	ctx context.Context, key K, result *getResultType[T],
+	keyStr string, cas uint64,
+) {
+	fillFn := i.filler(ctx, key)
+	i.sess.AddNextCall(func() {
+		fillResp, err := fillFn()
+		if err != nil {
+			result.err = err
+			return
+		}
+
+		result.resp = fillResp
+		data, err := fillResp.Marshal()
+		if err != nil {
+			result.err = err
+			return
+		}
+
+		i.pipeline.LeaseSet(keyStr, data, cas, memproxy.LeaseSetOptions{})
+	})
+}
+
 // Get ...
 func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 	keyStr := key.String()
@@ -74,23 +98,8 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 		}
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseGranted {
-			fillFn := i.filler(ctx, key)
-			i.sess.AddNextCall(func() {
-				fillResp, err := fillFn()
-				if err != nil {
-					result.err = err
-					return
-				}
-
-				result.resp = fillResp
-				data, err := fillResp.Marshal()
-				if err != nil {
-					result.err = err
-					return
-				}
-
-				i.pipeline.LeaseSet(keyStr, data, leaseGetResp.CAS, memproxy.LeaseSetOptions{})
-			})
+			i.handleLeaseGranted(ctx, key, &result, keyStr, leaseGetResp.CAS)
+			return
 		}
 	})
 

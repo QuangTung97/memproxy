@@ -111,7 +111,7 @@ func BenchmarkGoMapSet(b *testing.B) {
 	type structKey struct {
 	}
 	key := &structKey{}
-	m := map[interface{}]interface{}{}
+	m := map[any]any{}
 	m[key] = 245
 
 	for n := 0; n < b.N; n++ {

@@ -9,7 +9,7 @@ import (
 
 // NewOptions options to call Get Bucket
 type NewOptions struct {
-	Params interface{}
+	Params any
 }
 
 // Provider for user managed size log
@@ -50,7 +50,7 @@ type Invalidator interface {
 // FillerFactory MUST BE thread safe
 type FillerFactory interface {
 	// New with params is pipeline filler params
-	New(params interface{}) Filler
+	New(params any) Filler
 }
 
 // Filler not need to be thread safe

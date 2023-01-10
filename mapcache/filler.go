@@ -16,7 +16,7 @@ type fillerImpl struct {
 
 var _ memproxy.FillerFactory = &fillerFactoryImpl{}
 
-func (f *fillerFactoryImpl) New(sess memproxy.Session, params interface{}) memproxy.Filler {
+func (f *fillerFactoryImpl) New(sess memproxy.Session, params any) memproxy.Filler {
 	return &fillerImpl{
 		sess:   sess,
 		filler: f.factory.New(params),
@@ -158,7 +158,7 @@ func (f *fillerImpl) handleLowerBuckets(
 }
 
 func (f *fillerImpl) Fill(
-	ctx context.Context, p interface{},
+	ctx context.Context, p any,
 	completeFn func(resp memproxy.FillResponse, err error),
 ) {
 	params := p.(*fillParams)

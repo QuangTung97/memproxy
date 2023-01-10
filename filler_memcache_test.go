@@ -31,7 +31,7 @@ func newFillerMemcacheTest() *fillerMemcacheTest {
 
 	filler := &FillerMock{}
 	fillerFactory := &FillerFactoryMock{
-		NewFunc: func(sess Session, params interface{}) Filler {
+		NewFunc: func(sess Session, params any) Filler {
 			return filler
 		},
 	}
@@ -111,7 +111,7 @@ func (m *fillerMemcacheTest) stubLeaseSet() {
 
 func (m *fillerMemcacheTest) stubFill(respData []byte, err error) {
 	m.filler.FillFunc = func(
-		ctx context.Context, params interface{},
+		ctx context.Context, params any,
 		completeFn func(resp FillResponse, err error),
 	) {
 		m.sess.AddNextCall(func() {
@@ -122,7 +122,7 @@ func (m *fillerMemcacheTest) stubFill(respData []byte, err error) {
 
 func (m *fillerMemcacheTest) stubFillMulti(respData ...[]byte) {
 	m.filler.FillFunc = func(
-		ctx context.Context, params interface{},
+		ctx context.Context, params any,
 		completeFn func(resp FillResponse, err error),
 	) {
 		index := len(m.filler.FillCalls()) - 1
@@ -292,7 +292,7 @@ func TestFillerMemcache__Get_Granted__Multi(t *testing.T) {
 			},
 		},
 	}
-	var getCalls []interface{}
+	var getCalls []any
 	m.originPipe.LeaseGetFunc = func(key string, options LeaseGetOptions) func() (LeaseGetResponse, error) {
 		getCalls = append(getCalls, key)
 		index := len(m.originPipe.LeaseGetCalls()) - 1
@@ -308,7 +308,7 @@ func TestFillerMemcache__Get_Granted__Multi(t *testing.T) {
 		[]byte("response data 2"),
 	)
 
-	var setCalls []interface{}
+	var setCalls []any
 	m.originPipe.LeaseSetFunc = func(
 		key string, data []byte, cas uint64, options LeaseSetOptions,
 	) func() (LeaseSetResponse, error) {
@@ -336,8 +336,8 @@ func TestFillerMemcache__Get_Granted__Multi(t *testing.T) {
 		Data:   []byte("response data 2"),
 	}, resp)
 
-	assert.Equal(t, []interface{}{key1, key2, finish, finish}, getCalls)
-	assert.Equal(t, []interface{}{key1, key2}, setCalls)
+	assert.Equal(t, []any{key1, key2, finish, finish}, getCalls)
+	assert.Equal(t, []any{key1, key2}, setCalls)
 
 	assert.Equal(t, 0, len(m.originPipe.DeleteCalls()))
 }

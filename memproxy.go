@@ -47,7 +47,7 @@ type GetResponse struct {
 
 // LeaseGetOptions lease get options
 type LeaseGetOptions struct {
-	FillParams interface{} // deprecated TODO
+	FillParams any // deprecated TODO
 }
 
 // LeaseGetStatus status of lease get
@@ -95,16 +95,16 @@ type FillResponse struct {
 
 // FillerFactory must be thread safe
 type FillerFactory interface {
-	New(sess Session, params interface{}) Filler
+	New(sess Session, params any) Filler
 }
 
 // Filler for filling memcache contents, implementation of this interface NOT need to be thread safe
 type Filler interface {
-	Fill(ctx context.Context, params interface{}, completeFn func(resp FillResponse, err error))
+	Fill(ctx context.Context, params any, completeFn func(resp FillResponse, err error))
 }
 
 type pipelineOptions struct {
-	newFillerParams interface{}
+	newFillerParams any
 }
 
 func computePipelineOptions(options []PipelineOption) pipelineOptions {
@@ -121,7 +121,7 @@ func computePipelineOptions(options []PipelineOption) pipelineOptions {
 type PipelineOption func(opts *pipelineOptions)
 
 // WithNewFillerParams ...
-func WithNewFillerParams(params interface{}) PipelineOption {
+func WithNewFillerParams(params any) PipelineOption {
 	return func(opts *pipelineOptions) {
 		opts.newFillerParams = params
 	}
