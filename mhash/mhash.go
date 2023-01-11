@@ -12,16 +12,13 @@ type Null[T any] struct {
 	Data  T
 }
 
-// Bucket ...
-type Bucket[T any] struct {
-	Items  []T
-	Bitset [256]byte
-}
+// BitSet ...
+type BitSet [32]byte
 
-// Marshal ...
-func (Bucket[T]) Marshal() ([]byte, error) {
-	// TODO
-	return nil, nil
+// Bucket ...
+type Bucket[T item.Value] struct {
+	Items  []T
+	Bitset BitSet
 }
 
 // BucketKey ...
@@ -37,10 +34,10 @@ func (k BucketKey[R]) String() string {
 }
 
 // Filler ...
-type Filler[T any, R any] func(ctx context.Context, rootKey R, hash uint64) func() (Bucket[T], error)
+type Filler[T any, R any] func(ctx context.Context, rootKey R, hash uint64) func() ([]byte, error)
 
 // Hash ...
-type Hash[T item.Value, R item.Key, K item.Key] struct {
+type Hash[T item.Value, R item.Key, K comparable] struct {
 	sess     memproxy.Session
 	pipeline memproxy.Pipeline
 	getKey   func(v T) K
@@ -50,22 +47,26 @@ type Hash[T item.Value, R item.Key, K item.Key] struct {
 }
 
 // New ...
-func New[T item.Value, R item.Key, K item.Key](
+func New[T item.Value, R item.Key, K comparable](
 	sess memproxy.Session,
 	pipeline memproxy.Pipeline,
 	getKey func(v T) K,
-	_ item.Unmarshaler[T],
+	unmarshaler item.Unmarshaler[T],
 	filler Filler[T, R],
 ) *Hash[T, R, K] {
+	bucketUnmarshaler := BucketUnmarshalerFromItem(unmarshaler)
+
 	var bucketFiller item.Filler[Bucket[T], BucketKey[R]] = func(
 		ctx context.Context, key BucketKey[R],
 	) func() (Bucket[T], error) {
-		return filler(ctx, key.RootKey, key.Hash)
-	}
-
-	var bucketUnmarshaler item.Unmarshaler[Bucket[T]] = func(data []byte) (Bucket[T], error) {
-		// TODO
-		return Bucket[T]{}, nil
+		fn := filler(ctx, key.RootKey, key.Hash)
+		return func() (Bucket[T], error) {
+			data, err := fn()
+			if err != nil {
+				return Bucket[T]{}, nil
+			}
+			return bucketUnmarshaler(data)
+		}
 	}
 
 	return &Hash[T, R, K]{
