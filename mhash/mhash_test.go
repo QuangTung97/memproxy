@@ -15,6 +15,7 @@ type customerUsage struct {
 
 	Phone    string `json:"phone"`
 	TermCode string `json:"termCode"`
+	Hash     uint64 `json:"hash"`
 
 	Usage int64 `json:"usage"`
 	Age   int64 `json:"age"`
@@ -49,6 +50,11 @@ func (r customerUsageRootKey) String() string {
 type customerUsageKey struct {
 	Phone    string
 	TermCode string
+	hash     uint64
+}
+
+func (c customerUsageKey) Hash() uint64 {
+	return c.hash
 }
 
 type hashTest struct {
@@ -126,6 +132,7 @@ func TestHash(t *testing.T) {
 			CampaignID: 41,
 			Phone:      "0987000111",
 			TermCode:   "TERM01",
+			Hash:       2233,
 
 			Usage: 12,
 			Age:   22,
@@ -153,10 +160,15 @@ func TestHash(t *testing.T) {
 		)
 
 		resp, err := fn()
+
 		assert.Equal(t, nil, err)
 		assert.Equal(t, Null[customerUsage]{
 			Valid: true,
 			Data:  usage,
 		}, resp)
+
+		getCalls := h.pipe.LeaseGetCalls()
+		assert.Equal(t, 1, len(getCalls))
+		assert.Equal(t, "TENANT01:41:00", getCalls[0].Key)
 	})
 }

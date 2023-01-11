@@ -2,6 +2,8 @@ package mhash
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/hex"
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/item"
 )
@@ -12,8 +14,12 @@ type Null[T any] struct {
 	Data  T
 }
 
+const bitSetShift = 3
+const bitSetMask = 1<<bitSetShift - 1
+const bitSetBytes = 256 / (1 << bitSetShift)
+
 // BitSet ...
-type BitSet [32]byte
+type BitSet [bitSetBytes]byte
 
 // Bucket ...
 type Bucket[T item.Value] struct {
@@ -25,19 +31,27 @@ type Bucket[T item.Value] struct {
 type BucketKey[R item.Key] struct {
 	RootKey R
 	Hash    uint64
+	HashLen int
 }
 
 // String ...
 func (k BucketKey[R]) String() string {
-	// TODO
-	return k.RootKey.String()
+	var data [8]byte
+	binary.BigEndian.PutUint64(data[:], k.Hash)
+	return k.RootKey.String() + ":" + hex.EncodeToString(data[:k.HashLen])
 }
 
 // Filler ...
 type Filler[T any, R any] func(ctx context.Context, rootKey R, hash uint64) func() ([]byte, error)
 
+// Key types
+type Key interface {
+	comparable
+	Hash() uint64
+}
+
 // Hash ...
-type Hash[T item.Value, R item.Key, K comparable] struct {
+type Hash[T item.Value, R item.Key, K Key] struct {
 	sess     memproxy.Session
 	pipeline memproxy.Pipeline
 	getKey   func(v T) K
@@ -47,7 +61,7 @@ type Hash[T item.Value, R item.Key, K comparable] struct {
 }
 
 // New ...
-func New[T item.Value, R item.Key, K comparable](
+func New[T item.Value, R item.Key, K Key](
 	sess memproxy.Session,
 	pipeline memproxy.Pipeline,
 	getKey func(v T) K,
@@ -91,6 +105,7 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 	rootBucketFn := h.bucketItem.Get(ctx, BucketKey[R]{
 		RootKey: rootKey,
 		Hash:    0,
+		HashLen: 1,
 	})
 
 	var result getResult[T]
