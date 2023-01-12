@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/item"
+	"math"
 )
 
 // ErrHashTooDeep when too many levels to go to
@@ -66,6 +67,10 @@ type Hash[T item.Value, R item.Key, K Key] struct {
 	bucketItem *item.Item[Bucket[T], BucketKey[R]]
 }
 
+// HashUpdater ...
+type HashUpdater struct {
+}
+
 // New ...
 func New[T item.Value, R item.Key, K Key](
 	sess memproxy.Session,
@@ -117,7 +122,7 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 	doGetFn := func() {
 		rootBucketFn = h.bucketItem.Get(ctx, BucketKey[R]{
 			RootKey: rootKey,
-			Hash:    keyHash,
+			Hash:    keyHash & (math.MaxUint64 << (64 - 8*hashLen)),
 			HashLen: hashLen,
 		})
 		h.sess.AddNextCall(nextCallFn)

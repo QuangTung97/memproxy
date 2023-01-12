@@ -171,6 +171,17 @@ func mustMarshalBucket(b Bucket[customerUsage]) []byte {
 	return data
 }
 
+func newLeaseResp(pos int) memproxy.LeaseGetResponse {
+	return memproxy.LeaseGetResponse{
+		Status: memproxy.LeaseGetStatusFound,
+		CAS:    5501,
+		Data: mustMarshalBucket(Bucket[customerUsage]{
+			Items:  []customerUsage{},
+			Bitset: newBitSet(pos),
+		}),
+	}
+}
+
 func TestHash(t *testing.T) {
 	t.Run("get-from-cache", func(t *testing.T) {
 		h := newHashTest()
@@ -333,17 +344,6 @@ func TestHash(t *testing.T) {
 			Age:   22,
 		}
 
-		newLeaseResp := func(pos int) memproxy.LeaseGetResponse {
-			return memproxy.LeaseGetResponse{
-				Status: memproxy.LeaseGetStatusFound,
-				CAS:    5501,
-				Data: mustMarshalBucket(Bucket[customerUsage]{
-					Items:  []customerUsage{},
-					Bitset: newBitSet(pos),
-				}),
-			}
-		}
-
 		h.stubLeaseGetMulti(
 			newLeaseResp(0x16),
 			newLeaseResp(0x27),
@@ -390,17 +390,6 @@ func TestHash(t *testing.T) {
 		h := newHashTest()
 
 		const keyHash = 0x1627384950 << (64 - 5*8)
-
-		newLeaseResp := func(pos int) memproxy.LeaseGetResponse {
-			return memproxy.LeaseGetResponse{
-				Status: memproxy.LeaseGetStatusFound,
-				CAS:    5501,
-				Data: mustMarshalBucket(Bucket[customerUsage]{
-					Items:  []customerUsage{},
-					Bitset: newBitSet(pos),
-				}),
-			}
-		}
 
 		h.stubLeaseGetMulti(
 			newLeaseResp(0x16),
@@ -530,7 +519,7 @@ func TestHash(t *testing.T) {
 
 		assert.Equal(t, 1, len(h.fillerRootKeys))
 		assert.Equal(t, rootKey, h.fillerRootKeys[0])
-		assert.Equal(t, []uint64{keyHash}, h.fillerHashList)
+		assert.Equal(t, []uint64{0x00}, h.fillerHashList)
 	})
 
 	t.Run("cache-lease-granted--do-fill-return-errors", func(t *testing.T) {
@@ -578,6 +567,81 @@ func TestHash(t *testing.T) {
 
 		assert.Equal(t, 1, len(h.fillerRootKeys))
 		assert.Equal(t, rootKey, h.fillerRootKeys[0])
-		assert.Equal(t, []uint64{keyHash}, h.fillerHashList)
+		assert.Equal(t, []uint64{0x0}, h.fillerHashList)
+	})
+
+	t.Run("cache-lease-granted-at-level-3--do-fill", func(t *testing.T) {
+		h := newHashTest()
+
+		const keyHash = 0x1223ff << (64 - 8*3)
+		const cas = 120033
+
+		usage := customerUsage{
+			Tenant:     "TENANT01",
+			CampaignID: 41,
+			Phone:      "0987000111",
+			TermCode:   "TERM01",
+			Hash:       keyHash,
+
+			Usage: 88,
+			Age:   99,
+		}
+
+		h.stubLeaseGetMulti(
+			newLeaseResp(0x12),
+			newLeaseResp(0x23),
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseGranted,
+				CAS:    cas,
+			},
+		)
+
+		data := mustMarshalBucket(Bucket[customerUsage]{
+			Items: []customerUsage{
+				usage,
+			},
+		})
+		h.stubFill(data, nil)
+
+		h.stubLeaseSet()
+
+		rootKey := customerUsageRootKey{
+			Tenant:     "TENANT01",
+			CampaignID: 41,
+		}
+		usageKey := customerUsageKey{
+			Phone:    "0987000111",
+			TermCode: "TERM01",
+			hash:     keyHash,
+		}
+
+		fn := h.hash.Get(newContext(),
+			rootKey,
+			usageKey,
+		)
+
+		resp, err := fn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Null[customerUsage]{
+			Valid: true,
+			Data:  usage,
+		}, resp)
+
+		getCalls := h.pipe.LeaseGetCalls()
+		assert.Equal(t, 3, len(getCalls))
+		assert.Equal(t, "TENANT01:41:", getCalls[0].Key)
+		assert.Equal(t, "TENANT01:41:12", getCalls[1].Key)
+		assert.Equal(t, "TENANT01:41:1223", getCalls[2].Key)
+
+		setCalls := h.pipe.LeaseSetCalls()
+		assert.Equal(t, 1, len(setCalls))
+		assert.Equal(t, "TENANT01:41:1223", setCalls[0].Key)
+		assert.Equal(t, uint64(cas), setCalls[0].Cas)
+		assert.Equal(t, data, setCalls[0].Data)
+
+		assert.Equal(t, 1, len(h.fillerRootKeys))
+		assert.Equal(t, rootKey, h.fillerRootKeys[0])
+		assert.Equal(t, []uint64{0x1223 << (64 - 8*2)}, h.fillerHashList)
 	})
 }
