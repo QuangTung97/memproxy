@@ -35,7 +35,7 @@ func (b Bucket[T]) Marshal() ([]byte, error) {
 }
 
 // BucketUnmarshalerFromItem ...
-func BucketUnmarshalerFromItem[T item.Value](unmarshaler item.Unmarshaler[T]) func(data []byte) (Bucket[T], error) {
+func BucketUnmarshalerFromItem[T item.Value](unmarshaler item.Unmarshaler[T]) item.Unmarshaler[Bucket[T]] {
 	return func(data []byte) (Bucket[T], error) {
 		itemLen, n := binary.Uvarint(data)
 		// TODO check n

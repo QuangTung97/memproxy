@@ -59,16 +59,18 @@ type Key interface {
 
 // Hash ...
 type Hash[T item.Value, R item.Key, K Key] struct {
-	sess     memproxy.Session
-	pipeline memproxy.Pipeline
-	getKey   func(v T) K
-	filler   Filler[T, R]
+	sess   memproxy.Session
+	getKey func(v T) K
 
 	bucketItem *item.Item[Bucket[T], BucketKey[R]]
 }
 
 // HashUpdater ...
-type HashUpdater struct {
+type HashUpdater[T item.Value, R item.Key, K Key] struct {
+	sess        memproxy.Session
+	getKey      func(v T) K
+	unmarshaler item.Unmarshaler[Bucket[T]]
+	filler      Filler[T, R]
 }
 
 // New ...
@@ -95,10 +97,8 @@ func New[T item.Value, R item.Key, K Key](
 	}
 
 	return &Hash[T, R, K]{
-		sess:     sess,
-		pipeline: pipeline,
-		getKey:   getKey,
-		filler:   filler,
+		sess:   sess,
+		getKey: getKey,
 
 		bucketItem: item.New[Bucket[T], BucketKey[R]](
 			sess, pipeline, bucketUnmarshaler, bucketFiller,
@@ -109,6 +109,15 @@ func New[T item.Value, R item.Key, K Key](
 type getResult[T any] struct {
 	resp Null[T]
 	err  error
+}
+
+func computeHashAtLevel(hash uint64, hashLen int) uint64 {
+	return hash & (math.MaxUint64 << (64 - 8*hashLen))
+}
+
+func computeBitOffsetAtNextLevel(hash uint64, currentHashLen int) int {
+	offset := (hash >> (64 - 8 - currentHashLen*8)) & 0xff
+	return int(offset)
 }
 
 // Get ...
@@ -122,7 +131,7 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 	doGetFn := func() {
 		rootBucketFn = h.bucketItem.Get(ctx, BucketKey[R]{
 			RootKey: rootKey,
-			Hash:    keyHash & (math.MaxUint64 << (64 - 8*hashLen)),
+			Hash:    computeHashAtLevel(keyHash, hashLen),
 			HashLen: hashLen,
 		})
 		h.sess.AddNextCall(nextCallFn)
@@ -136,9 +145,8 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 			return
 		}
 
-		bitOffset := (keyHash >> (64 - 8 - hashLen*8)) & 0xff
-
-		if bucket.Bitset.GetBit(int(bitOffset)) {
+		bitOffset := computeBitOffsetAtNextLevel(keyHash, hashLen)
+		if bucket.Bitset.GetBit(bitOffset) {
 			hashLen++
 			if hashLen >= maxDeepLevels {
 				result.err = ErrHashTooDeep
