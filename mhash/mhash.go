@@ -4,9 +4,15 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/item"
 )
+
+// ErrHashTooDeep when too many levels to go to
+var ErrHashTooDeep = errors.New("mhash: hash go too deep")
+
+const maxDeepLevels = 5
 
 // Null ...
 type Null[T any] struct {
@@ -77,7 +83,7 @@ func New[T item.Value, R item.Key, K Key](
 		return func() (Bucket[T], error) {
 			data, err := fn()
 			if err != nil {
-				return Bucket[T]{}, nil
+				return Bucket[T]{}, err
 			}
 			return bucketUnmarshaler(data)
 		}
@@ -102,18 +108,38 @@ type getResult[T any] struct {
 
 // Get ...
 func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[T], error) {
-	rootBucketFn := h.bucketItem.Get(ctx, BucketKey[R]{
-		RootKey: rootKey,
-		Hash:    0,
-		HashLen: 1,
-	})
+	keyHash := key.Hash()
+
+	var rootBucketFn func() (Bucket[T], error)
+	var nextCallFn func()
+	hashLen := 0
+
+	doGetFn := func() {
+		rootBucketFn = h.bucketItem.Get(ctx, BucketKey[R]{
+			RootKey: rootKey,
+			Hash:    keyHash,
+			HashLen: hashLen,
+		})
+		h.sess.AddNextCall(nextCallFn)
+	}
 
 	var result getResult[T]
-
-	h.sess.AddNextCall(func() {
+	nextCallFn = func() {
 		bucket, err := rootBucketFn()
 		if err != nil {
 			result.err = err
+			return
+		}
+
+		bitOffset := (keyHash >> (64 - 8 - hashLen*8)) & 0xff
+
+		if bucket.Bitset.GetBit(int(bitOffset)) {
+			hashLen++
+			if hashLen >= maxDeepLevels {
+				result.err = ErrHashTooDeep
+				return
+			}
+			doGetFn()
 			return
 		}
 
@@ -127,7 +153,9 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 				return
 			}
 		}
-	})
+	}
+
+	doGetFn()
 
 	return func() (Null[T], error) {
 		h.sess.Execute()
