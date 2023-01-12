@@ -34,6 +34,13 @@ func (u customerUsage) getKey() customerUsageKey {
 	}
 }
 
+func (u customerUsage) getRootKey() customerUsageRootKey {
+	return customerUsageRootKey{
+		Tenant:     u.Tenant,
+		CampaignID: u.CampaignID,
+	}
+}
+
 func unmarshalCustomerUsage(data []byte) (customerUsage, error) {
 	var u customerUsage
 	err := json.Unmarshal(data, &u)
@@ -97,7 +104,7 @@ func newHashTest() *hashTest {
 		h.fillerHashList = append(h.fillerHashList, hash)
 
 		if h.fillerFunc == nil {
-			panic("fillerFunc is nill")
+			panic("fillerFunc is nil")
 		}
 
 		return h.fillerFunc(ctx, rootKey, hash)

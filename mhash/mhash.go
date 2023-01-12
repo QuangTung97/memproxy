@@ -71,6 +71,8 @@ type HashUpdater[T item.Value, R item.Key, K Key] struct {
 	getKey      func(v T) K
 	unmarshaler item.Unmarshaler[Bucket[T]]
 	filler      Filler[T, R]
+
+	maxItemsPerBucket int
 }
 
 // New ...
@@ -115,7 +117,7 @@ func computeHashAtLevel(hash uint64, hashLen int) uint64 {
 	return hash & (math.MaxUint64 << (64 - 8*hashLen))
 }
 
-func computeBitOffsetAtNextLevel(hash uint64, currentHashLen int) int {
+func computeBitOffsetAtLevel(hash uint64, currentHashLen int) int {
 	offset := (hash >> (64 - 8 - currentHashLen*8)) & 0xff
 	return int(offset)
 }
@@ -145,7 +147,7 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 			return
 		}
 
-		bitOffset := computeBitOffsetAtNextLevel(keyHash, hashLen)
+		bitOffset := computeBitOffsetAtLevel(keyHash, hashLen)
 		if bucket.Bitset.GetBit(bitOffset) {
 			hashLen++
 			if hashLen >= maxDeepLevels {
