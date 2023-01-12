@@ -127,6 +127,13 @@ func (u *HashUpdater[T, R, K]) GetUpsertBuckets(
 			return
 		}
 
+		offset := computeBitOffsetAtLevel(keyHash, hashLen)
+		if bucket.Bitset.GetBit(offset) {
+			hashLen++
+			doComputeFn()
+			return
+		}
+
 		updated := updateBucketDataItem(&bucket, value, u.getKey)
 		if updated {
 			appendResultBucket(bucket, hashLen)
@@ -139,7 +146,6 @@ func (u *HashUpdater[T, R, K]) GetUpsertBuckets(
 			return
 		}
 
-		offset := computeBitOffsetAtLevel(keyHash, hashLen)
 		bucket.Bitset.SetBit(offset)
 
 		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey)
