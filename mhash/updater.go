@@ -6,34 +6,114 @@ import (
 	"github.com/QuangTung97/memproxy/item"
 )
 
+type fillFunc = func() ([]byte, error)
+
+type fillResponse[R item.Key] struct {
+	data BucketData[R]
+	err  error
+}
+
+type emptyStruct = struct{}
+
+type fillContext[R item.Key] struct {
+	keys   []BucketKey[R]
+	keySet map[BucketKey[R]]emptyStruct
+}
+
 // NewUpdater ...
 func NewUpdater[T item.Value, R item.Key, K Key](
 	sess memproxy.Session,
 	getKey func(v T) K,
 	unmarshaler item.Unmarshaler[T],
-	filler Filler[T, R],
+	filler Filler[R],
+	upsertFunc func(bucket BucketData[R]),
 	maxItemsPerBucket int,
 ) *HashUpdater[T, R, K] {
+	fillResult := map[BucketKey[R]]fillResponse[R]{}
+
+	var globalFillCtx *fillContext[R]
+
+	doFill := func(ctx context.Context) {
+		fillCtx := globalFillCtx
+		if fillCtx == nil {
+			return
+		}
+		globalFillCtx = nil
+
+		fillFuncList := make([]fillFunc, 0, len(fillCtx.keys))
+		for _, key := range fillCtx.keys {
+			fillFuncList = append(fillFuncList, filler(ctx, key))
+		}
+
+		for i, key := range fillCtx.keys {
+			data, err := fillFuncList[i]()
+
+			fillResult[key] = fillResponse[R]{
+				data: BucketData[R]{
+					Key:  key,
+					Data: data,
+				},
+				err: err,
+			}
+		}
+	}
+
+	var updaterFiller Filler[R] = func(ctx context.Context, key BucketKey[R]) func() ([]byte, error) {
+		if globalFillCtx == nil {
+			globalFillCtx = &fillContext[R]{
+				keys:   nil,
+				keySet: map[BucketKey[R]]struct{}{},
+			}
+		}
+		fillCtx := globalFillCtx
+
+		_, existed := fillCtx.keySet[key]
+		if !existed {
+			fillCtx.keys = append(fillCtx.keys, key)
+			fillCtx.keySet[key] = struct{}{}
+		}
+
+		return func() ([]byte, error) {
+			doFill(ctx)
+
+			resp := fillResult[key]
+			return resp.data.Data, resp.err
+		}
+	}
+
+	var upsertKeys []BucketKey[R]
+	upsertKeySet := map[BucketKey[R]]struct{}{}
+
+	updateFuncWrap := func(b BucketData[R]) {
+		key := b.Key
+		_, existed := upsertKeySet[key]
+		if !existed {
+			upsertKeySet[key] = struct{}{}
+			upsertKeys = append(upsertKeys, key)
+		}
+		fillResult[key] = fillResponse[R]{
+			data: b,
+			err:  nil,
+		}
+	}
+
+	doUpsert := func() {
+		for _, key := range upsertKeys {
+			upsertFunc(fillResult[key].data)
+		}
+		upsertKeys = nil
+	}
+
 	return &HashUpdater[T, R, K]{
 		sess:        sess,
 		getKey:      getKey,
 		unmarshaler: BucketUnmarshalerFromItem[T](unmarshaler),
-		filler:      filler,
+		filler:      updaterFiller,
+		upsertFunc:  updateFuncWrap,
+		doUpsert:    doUpsert,
 
 		maxItemsPerBucket: maxItemsPerBucket,
 	}
-}
-
-// BucketData ...
-type BucketData[R item.Key] struct {
-	RootKey R
-	Hash    uint64
-	Data    []byte
-}
-
-type updaterResult[R item.Key] struct {
-	buckets []BucketData[R]
-	err     error
 }
 
 func splitBucketItemsWithAndWithoutSameHash[T item.Value, K Key](
@@ -82,67 +162,74 @@ func updateBucketDataItem[T item.Value, K Key](
 	return false
 }
 
-// GetUpsertBuckets ...
-func (u *HashUpdater[T, R, K]) GetUpsertBuckets(
+// UpsertBuckets ...
+func (u *HashUpdater[T, R, K]) UpsertBuckets(
 	ctx context.Context, rootKey R, value T,
-) func() ([]BucketData[R], error) {
+) func() error {
 	key := u.getKey(value)
 	keyHash := key.Hash()
 
-	hashLen := 0
-	var result updaterResult[R]
+	level := 0
+	var resultErr error
 
 	var fillerFn func() ([]byte, error)
 	var nextCallFn func()
 
 	doComputeFn := func() {
-		fillerFn = u.filler(ctx, rootKey, computeHashAtLevel(keyHash, hashLen))
+		fillerFn = u.filler(ctx, BucketKey[R]{
+			RootKey: rootKey,
+			Hash:    computeHashAtLevel(keyHash, level),
+			Level:   level,
+		})
 		u.sess.AddNextCall(nextCallFn)
 	}
 
-	appendResultBucket := func(bucket Bucket[T], hashLen int) {
+	upsertBucket := func(bucket Bucket[T], level int) {
 		newData, err := bucket.Marshal()
 		if err != nil {
-			result.err = err
+			resultErr = err
 			return
 		}
 
-		result.buckets = append(result.buckets, BucketData[R]{
-			RootKey: rootKey,
-			Hash:    computeHashAtLevel(keyHash, hashLen),
-			Data:    newData,
+		u.upsertFunc(BucketData[R]{
+			Key: BucketKey[R]{
+				RootKey: rootKey,
+				Hash:    computeHashAtLevel(keyHash, level),
+				Level:   level,
+			},
+			Data: newData,
 		})
 	}
 
 	nextCallFn = func() {
 		data, err := fillerFn()
 		if err != nil {
-			result.err = err
+			resultErr = err
 			return
 		}
 
 		bucket, err := u.unmarshaler(data)
 		if err != nil {
-			result.err = err
+			resultErr = err
 			return
 		}
 
-		offset := computeBitOffsetAtLevel(keyHash, hashLen)
+		offset := computeBitOffsetAtLevel(keyHash, level)
 		if bucket.Bitset.GetBit(offset) {
-			hashLen++
+			level++ // TODO Error Too Many Levels
 			doComputeFn()
 			return
 		}
 
 		updated := updateBucketDataItem(&bucket, value, u.getKey)
 		if updated {
-			appendResultBucket(bucket, hashLen)
+			upsertBucket(bucket, level)
 			return
 		}
 
 		if len(bucket.Items) < u.maxItemsPerBucket {
 			bucket.Items = append(bucket.Items, value)
-			appendResultBucket(bucket, hashLen)
+			upsertBucket(bucket, level)
 			return
 		}
 
@@ -150,18 +237,20 @@ func (u *HashUpdater[T, R, K]) GetUpsertBuckets(
 
 		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey)
 
-		appendResultBucket(bucket, hashLen)
+		upsertBucket(bucket, level)
 
 		sameHashItems = append(sameHashItems, value)
-		appendResultBucket(Bucket[T]{
+
+		upsertBucket(Bucket[T]{
 			Items: sameHashItems,
-		}, hashLen+1)
+		}, level+1)
 	}
 
 	doComputeFn()
 
-	return func() ([]BucketData[R], error) {
+	return func() error {
 		u.sess.Execute()
-		return result.buckets, result.err
+		u.doUpsert()
+		return resultErr
 	}
 }

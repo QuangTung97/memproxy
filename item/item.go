@@ -13,7 +13,6 @@ type Value interface {
 // Key ...
 type Key interface {
 	comparable
-
 	String() string
 }
 

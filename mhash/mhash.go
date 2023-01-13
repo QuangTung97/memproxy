@@ -38,18 +38,18 @@ type Bucket[T item.Value] struct {
 type BucketKey[R item.Key] struct {
 	RootKey R
 	Hash    uint64
-	HashLen int
+	Level   int // from 0
 }
 
 // String ...
 func (k BucketKey[R]) String() string {
 	var data [8]byte
 	binary.BigEndian.PutUint64(data[:], k.Hash)
-	return k.RootKey.String() + ":" + hex.EncodeToString(data[:k.HashLen])
+	return k.RootKey.String() + ":" + hex.EncodeToString(data[:k.Level])
 }
 
 // Filler ...
-type Filler[T any, R any] func(ctx context.Context, rootKey R, hash uint64) func() ([]byte, error)
+type Filler[R item.Key] func(ctx context.Context, key BucketKey[R]) func() ([]byte, error)
 
 // Key types
 type Key interface {
@@ -65,12 +65,20 @@ type Hash[T item.Value, R item.Key, K Key] struct {
 	bucketItem *item.Item[Bucket[T], BucketKey[R]]
 }
 
+// BucketData ...
+type BucketData[R item.Key] struct {
+	Key  BucketKey[R]
+	Data []byte
+}
+
 // HashUpdater ...
 type HashUpdater[T item.Value, R item.Key, K Key] struct {
 	sess        memproxy.Session
 	getKey      func(v T) K
 	unmarshaler item.Unmarshaler[Bucket[T]]
-	filler      Filler[T, R]
+	filler      Filler[R]
+	upsertFunc  func(bucket BucketData[R])
+	doUpsert    func()
 
 	maxItemsPerBucket int
 }
@@ -81,14 +89,14 @@ func New[T item.Value, R item.Key, K Key](
 	pipeline memproxy.Pipeline,
 	getKey func(v T) K,
 	unmarshaler item.Unmarshaler[T],
-	filler Filler[T, R],
+	filler Filler[R],
 ) *Hash[T, R, K] {
 	bucketUnmarshaler := BucketUnmarshalerFromItem(unmarshaler)
 
 	var bucketFiller item.Filler[Bucket[T], BucketKey[R]] = func(
 		ctx context.Context, key BucketKey[R],
 	) func() (Bucket[T], error) {
-		fn := filler(ctx, key.RootKey, key.Hash)
+		fn := filler(ctx, key)
 		return func() (Bucket[T], error) {
 			data, err := fn()
 			if err != nil {
@@ -134,7 +142,7 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 		rootBucketFn = h.bucketItem.Get(ctx, BucketKey[R]{
 			RootKey: rootKey,
 			Hash:    computeHashAtLevel(keyHash, hashLen),
-			HashLen: hashLen,
+			Level:   hashLen,
 		})
 		h.sess.AddNextCall(nextCallFn)
 	}

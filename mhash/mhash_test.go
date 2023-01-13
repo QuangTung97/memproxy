@@ -70,7 +70,7 @@ type hashTest struct {
 	pipe *memproxy.PipelineMock
 	hash *Hash[customerUsage, customerUsageRootKey, customerUsageKey]
 
-	fillerFunc     Filler[customerUsage, customerUsageRootKey]
+	fillerFunc     Filler[customerUsageRootKey]
 	fillerRootKeys []customerUsageRootKey
 	fillerHashList []uint64
 }
@@ -97,17 +97,17 @@ func newHashTest() *hashTest {
 		pipe: pipe,
 	}
 
-	var filler Filler[customerUsage, customerUsageRootKey] = func(
-		ctx context.Context, rootKey customerUsageRootKey, hash uint64,
+	var filler Filler[customerUsageRootKey] = func(
+		ctx context.Context, key BucketKey[customerUsageRootKey],
 	) func() ([]byte, error) {
-		h.fillerRootKeys = append(h.fillerRootKeys, rootKey)
-		h.fillerHashList = append(h.fillerHashList, hash)
+		h.fillerRootKeys = append(h.fillerRootKeys, key.RootKey)
+		h.fillerHashList = append(h.fillerHashList, key.Hash)
 
 		if h.fillerFunc == nil {
 			panic("fillerFunc is nil")
 		}
 
-		return h.fillerFunc(ctx, rootKey, hash)
+		return h.fillerFunc(ctx, key)
 	}
 
 	h.hash = New[customerUsage, customerUsageRootKey, customerUsageKey](
@@ -139,7 +139,7 @@ func (h *hashTest) stubLeaseGetMulti(respList ...memproxy.LeaseGetResponse) {
 }
 
 func (h *hashTest) stubFill(data []byte, err error) {
-	h.fillerFunc = func(ctx context.Context, rootKey customerUsageRootKey, hash uint64) func() ([]byte, error) {
+	h.fillerFunc = func(ctx context.Context, key BucketKey[customerUsageRootKey]) func() ([]byte, error) {
 		return func() ([]byte, error) {
 			return data, err
 		}
