@@ -37,8 +37,8 @@ type Bucket[T item.Value] struct {
 // BucketKey ...
 type BucketKey[R item.Key] struct {
 	RootKey R
-	Hash    uint64
 	Level   int // from 0
+	Hash    uint64
 }
 
 // String ...
@@ -141,8 +141,8 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 	doGetFn := func() {
 		rootBucketFn = h.bucketItem.Get(ctx, BucketKey[R]{
 			RootKey: rootKey,
-			Hash:    computeHashAtLevel(keyHash, hashLen),
 			Level:   hashLen,
+			Hash:    computeHashAtLevel(keyHash, hashLen),
 		})
 		h.sess.AddNextCall(nextCallFn)
 	}

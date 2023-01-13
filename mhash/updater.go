@@ -21,6 +21,23 @@ type fillContext[R item.Key] struct {
 	keySet map[BucketKey[R]]emptyStruct
 }
 
+func (c *fillContext[R]) appendFillKey(
+	key BucketKey[R], fillResult map[BucketKey[R]]fillResponse[R],
+) {
+	_, existed := c.keySet[key]
+	if existed {
+		return
+	}
+
+	_, fillResultExisted := fillResult[key]
+	if fillResultExisted {
+		return
+	}
+
+	c.keySet[key] = struct{}{}
+	c.keys = append(c.keys, key)
+}
+
 // NewUpdater ...
 //
 //revive:disable-next-line:argument-limit
@@ -71,11 +88,7 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 		}
 		fillCtx := globalFillCtx
 
-		_, existed := fillCtx.keySet[key]
-		if !existed {
-			fillCtx.keys = append(fillCtx.keys, key)
-			fillCtx.keySet[key] = struct{}{}
-		}
+		fillCtx.appendFillKey(key, fillResult)
 
 		return func() ([]byte, error) {
 			doFill(ctx)
@@ -137,13 +150,17 @@ func countNumberOfHashes[T item.Value, K Key](
 	return len(hashSet)
 }
 
+func hashPrefixEqual(a, b uint64, level int) bool {
+	return computeHashAtLevel(a, level) == computeHashAtLevel(b, level)
+}
+
 func splitBucketItemsWithAndWithoutSameHash[T item.Value, K Key](
-	b *Bucket[T], hash uint64, getKey func(T) K,
+	b *Bucket[T], inputHash uint64, getKey func(T) K, level int,
 ) (sameHashItems []T) {
 	sameHash := false
 	for _, bucketItem := range b.Items {
 		itemHash := getKey(bucketItem).Hash()
-		if itemHash == hash {
+		if hashPrefixEqual(itemHash, inputHash, level) {
 			sameHash = true
 			break
 		}
@@ -156,7 +173,7 @@ func splitBucketItemsWithAndWithoutSameHash[T item.Value, K Key](
 	newItems := make([]T, 0, len(b.Items))
 	for _, bucketItem := range b.Items {
 		itemHash := getKey(bucketItem).Hash()
-		if itemHash == hash {
+		if hashPrefixEqual(itemHash, inputHash, level) {
 			sameHashItems = append(sameHashItems, bucketItem)
 		} else {
 			newItems = append(newItems, bucketItem)
@@ -191,8 +208,8 @@ func (u *HashUpdater[T, R, K]) doUpsertBucket(
 ) error {
 	bucketKey := BucketKey[R]{
 		RootKey: rootKey,
-		Hash:    computeHashAtLevel(keyHash, level),
 		Level:   level,
+		Hash:    computeHashAtLevel(keyHash, level),
 	}
 
 	if deleted {
@@ -227,8 +244,8 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 	doComputeFn := func() {
 		fillerFn = u.filler(ctx, BucketKey[R]{
 			RootKey: rootKey,
-			Hash:    computeHashAtLevel(keyHash, level),
 			Level:   level,
+			Hash:    computeHashAtLevel(keyHash, level),
 		})
 		u.sess.AddNextCall(nextCallFn)
 	}
@@ -271,7 +288,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 		bucket.Bitset.SetBit(offset)
 
-		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey)
+		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey, level+1)
 
 		err = u.doUpsertBucket(&bucket, rootKey, keyHash, level, false)
 		if err != nil {
@@ -312,8 +329,8 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 	doComputeFn := func() {
 		fillerFn = u.filler(ctx, BucketKey[R]{
 			RootKey: rootKey,
-			Hash:    computeHashAtLevel(keyHash, level),
 			Level:   level,
+			Hash:    computeHashAtLevel(keyHash, level),
 		})
 		u.sess.AddNextCall(nextCallFn)
 	}
@@ -353,29 +370,7 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 			return
 		}
 
-		n := len(scannedBuckets)
-		for i := n - 1; i >= 0; i-- {
-			bucket := scannedBuckets[i]
-			deleted := len(bucket.Items) == 0 && bucket.Bitset.IsZero()
-
-			err = u.doUpsertBucket(bucket, rootKey, keyHash, level, deleted)
-			if err != nil {
-				resultErr = err
-				return
-			}
-
-			if !deleted {
-				return
-			}
-			if i == 0 {
-				return
-			}
-
-			prevBucket := scannedBuckets[i-1]
-			prevBucket.Bitset.ClearBit(computeBitOffsetAtLevel(keyHash, level-1))
-
-			level--
-		}
+		resultErr = u.deleteBucketInChain(scannedBuckets, rootKey, keyHash)
 	}
 
 	doComputeFn()
@@ -384,6 +379,36 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 		u.execute()
 		return resultErr
 	}
+}
+
+func (u *HashUpdater[T, R, K]) deleteBucketInChain(
+	scannedBuckets []*Bucket[T],
+	rootKey R, keyHash uint64,
+) error {
+	n := len(scannedBuckets)
+
+	for level := n - 1; level >= 0; level-- {
+		bucket := scannedBuckets[level]
+		deleted := len(bucket.Items) == 0 && bucket.Bitset.IsZero()
+
+		err := u.doUpsertBucket(bucket, rootKey, keyHash, level, deleted)
+		if err != nil {
+			return err
+		}
+
+		if !deleted {
+			return nil
+		}
+
+		if level == 0 {
+			return nil
+		}
+
+		prevBucket := scannedBuckets[level-1]
+		prevBucket.Bitset.ClearBit(computeBitOffsetAtLevel(keyHash, level-1))
+	}
+
+	return nil
 }
 
 func (u *HashUpdater[T, R, K]) execute() {

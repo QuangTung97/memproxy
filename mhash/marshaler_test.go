@@ -51,3 +51,17 @@ func TestBucketMarshaler(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, origin, newBucket)
 }
+
+func TestBucketMarshaler_Unmarshal_Empty(t *testing.T) {
+	unmarshaler := func(data []byte) (userTest, error) {
+		var u userTest
+		err := json.Unmarshal(data, &u)
+		return u, err
+	}
+
+	bucketUnmarshaler := BucketUnmarshalerFromItem[userTest](unmarshaler)
+	newBucket, err := bucketUnmarshaler(nil)
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Bucket[userTest]{}, newBucket)
+}

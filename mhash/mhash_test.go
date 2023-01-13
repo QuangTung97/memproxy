@@ -75,10 +75,8 @@ type hashTest struct {
 	fillerHashList []uint64
 }
 
-func newHashTest() *hashTest {
+func newFakeSession() *memproxy.SessionMock {
 	sess := &memproxy.SessionMock{}
-	pipe := &memproxy.PipelineMock{}
-
 	var calls []func()
 	sess.AddNextCallFunc = func(fn func()) {
 		calls = append(calls, fn)
@@ -92,6 +90,12 @@ func newHashTest() *hashTest {
 			}
 		}
 	}
+	return sess
+}
+
+func newHashTest() *hashTest {
+	sess := newFakeSession()
+	pipe := &memproxy.PipelineMock{}
 
 	h := &hashTest{
 		pipe: pipe,
