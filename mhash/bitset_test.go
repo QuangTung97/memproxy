@@ -16,7 +16,11 @@ func TestBitSet(t *testing.T) {
 	t.Run("set-and-clear", func(t *testing.T) {
 		var b BitSet
 
+		assert.Equal(t, true, b.IsZero())
+
 		b.SetBit(7)
+
+		assert.Equal(t, false, b.IsZero())
 
 		assert.Equal(t, false, b.GetBit(6))
 		assert.Equal(t, true, b.GetBit(7))
@@ -69,7 +73,11 @@ func TestBitSet(t *testing.T) {
 	t.Run("set-and-clear-at-bound", func(t *testing.T) {
 		var b BitSet
 
+		assert.Equal(t, true, b.IsZero())
+
 		b.SetBit(255)
+
+		assert.Equal(t, false, b.IsZero())
 
 		assert.Equal(t, false, b.GetBit(254))
 		assert.Equal(t, true, b.GetBit(255))

@@ -627,6 +627,55 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		assert.Equal(t, []uint64{0x00}, u.fillerHashList)
 	})
 
+	t.Run("remove-single--with-bit-set-non-zero--not-delete", func(t *testing.T) {
+		u := newUpdaterTest(2)
+
+		newUsage := func(i int) customerUsage {
+			return customerUsage{
+				Tenant:     "TENANT",
+				CampaignID: 70,
+
+				Phone:    "098700011" + fmt.Sprint(i),
+				TermCode: "TERM0" + fmt.Sprint(i),
+				Hash:     uint64(0x60+i) << (64 - 8),
+
+				Usage: int64(10 + i),
+				Age:   int64(20 + i),
+			}
+		}
+		usage1 := newUsage(1)
+
+		u.stubFillMulti(
+			mustMarshalBucket(Bucket[customerUsage]{
+				Items:  []customerUsage{usage1},
+				Bitset: newBitSet(0x55),
+			}),
+		)
+
+		fn := u.updater.DeleteBucket(newContext(), usage1.getRootKey(), usage1.getKey())
+
+		err := fn()
+		assert.Equal(t, nil, err)
+
+		assert.Equal(t, []BucketData[customerUsageRootKey]{
+			{
+				Key: BucketKey[customerUsageRootKey]{
+					RootKey: usage1.getRootKey(),
+					Hash:    0x00,
+					Level:   0,
+				},
+				Data: mustMarshalBucket(Bucket[customerUsage]{
+					Bitset: newBitSet(0x55),
+				}),
+			},
+		}, u.upsertBuckets)
+		assert.Equal(t, []BucketKey[customerUsageRootKey](nil), u.deleteBuckets)
+
+		// Check Filler Calls
+		assert.Equal(t, []customerUsageRootKey{usage1.getRootKey()}, u.fillerRootKeys)
+		assert.Equal(t, []uint64{0x00}, u.fillerHashList)
+	})
+
 	t.Run("remove-one-in-two-items", func(t *testing.T) {
 		u := newUpdaterTest(2)
 

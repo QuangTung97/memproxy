@@ -20,3 +20,13 @@ func (b *BitSet) GetBit(index int) bool {
 	offset := index & bitSetMask
 	return b[pos]&(1<<offset) != 0
 }
+
+// IsZero ...
+func (b *BitSet) IsZero() bool {
+	for _, e := range b {
+		if e != 0 {
+			return false
+		}
+	}
+	return true
+}

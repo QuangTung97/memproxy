@@ -307,7 +307,7 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 	var fillerFn func() ([]byte, error)
 	var nextCallFn func()
 
-	var prevBucket Bucket[T]
+	var scanedBuckets []Bucket[T]
 
 	doComputeFn := func() {
 		fillerFn = u.filler(ctx, BucketKey[R]{
@@ -330,6 +330,7 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 			resultErr = err
 			return
 		}
+		scanedBuckets = append(scanedBuckets, bucket)
 
 		offset := computeBitOffsetAtLevel(keyHash, level)
 		if bucket.Bitset.GetBit(offset) {
@@ -338,7 +339,6 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 				resultErr = ErrHashTooDeep
 				return
 			}
-			prevBucket = bucket
 			doComputeFn()
 			return
 		}
@@ -353,7 +353,7 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 			return
 		}
 
-		deleted := len(bucket.Items) == 0
+		deleted := len(bucket.Items) == 0 && bucket.Bitset.IsZero()
 		err = u.doUpsertBucket(&bucket, rootKey, keyHash, level, deleted)
 		if err != nil {
 			resultErr = err
@@ -361,6 +361,7 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 		}
 
 		if deleted && level >= 1 {
+			prevBucket := scanedBuckets[len(scanedBuckets)-2]
 			prevBucket.Bitset.ClearBit(computeBitOffsetAtLevel(keyHash, level-1))
 			err = u.doUpsertBucket(&prevBucket, rootKey, keyHash, level-1, false)
 			if err != nil {
