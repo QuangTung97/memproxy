@@ -77,7 +77,7 @@ type HashUpdater[T item.Value, R item.Key, K Key] struct {
 	getKey      func(v T) K
 	unmarshaler item.Unmarshaler[Bucket[T]]
 	filler      Filler[R]
-	upsertFunc  func(bucket BucketData[R])
+	upsertFunc  func(bucket BucketData[R], delete bool)
 	doUpsert    func()
 
 	maxHashesPerBucket int

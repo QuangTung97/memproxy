@@ -17,6 +17,7 @@ type updaterTest struct {
 	fillerLevels   []int
 
 	upsertBuckets []BucketData[customerUsageRootKey]
+	deleteBuckets []BucketKey[customerUsageRootKey]
 }
 
 func newUpdaterTest(maxHashesPerBucket int) *updaterTest {
@@ -56,6 +57,9 @@ func newUpdaterTest(maxHashesPerBucket int) *updaterTest {
 		sess, customerUsage.getKey, unmarshalCustomerUsage, filler,
 		func(bucket BucketData[customerUsageRootKey]) {
 			u.upsertBuckets = append(u.upsertBuckets, bucket)
+		},
+		func(bucketKey BucketKey[customerUsageRootKey]) {
+			u.deleteBuckets = append(u.deleteBuckets, bucketKey)
 		},
 		maxHashesPerBucket,
 	)
@@ -572,18 +576,51 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		err := fn()
 		assert.Equal(t, nil, err)
 
-		assert.Equal(t, []BucketData[customerUsageRootKey]{
+		assert.Equal(t, []BucketData[customerUsageRootKey](nil), u.upsertBuckets)
+		assert.Equal(t, []BucketKey[customerUsageRootKey]{
 			{
-				Key: BucketKey[customerUsageRootKey]{
-					RootKey: usage1.getRootKey(),
-					Hash:    0x00,
-					Level:   0,
-				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
-					Items: nil,
-				}),
+				RootKey: usage1.getRootKey(),
+				Hash:    0x00,
+				Level:   0,
 			},
-		}, u.upsertBuckets)
+		}, u.deleteBuckets)
+
+		// Check Filler Calls
+		assert.Equal(t, []customerUsageRootKey{usage1.getRootKey()}, u.fillerRootKeys)
+		assert.Equal(t, []uint64{0x00}, u.fillerHashList)
+	})
+
+	t.Run("remove-already-empty", func(t *testing.T) {
+		u := newUpdaterTest(2)
+
+		newUsage := func(i int) customerUsage {
+			return customerUsage{
+				Tenant:     "TENANT",
+				CampaignID: 70,
+
+				Phone:    "098700011" + fmt.Sprint(i),
+				TermCode: "TERM0" + fmt.Sprint(i),
+				Hash:     uint64(0x60+i) << (64 - 8),
+
+				Usage: int64(10 + i),
+				Age:   int64(20 + i),
+			}
+		}
+		usage1 := newUsage(1)
+
+		u.stubFillMulti(
+			mustMarshalBucket(Bucket[customerUsage]{
+				Items: nil,
+			}),
+		)
+
+		fn := u.updater.DeleteBucket(newContext(), usage1.getRootKey(), usage1.getKey())
+
+		err := fn()
+		assert.Equal(t, nil, err)
+
+		assert.Equal(t, []BucketData[customerUsageRootKey](nil), u.upsertBuckets)
+		assert.Equal(t, []BucketKey[customerUsageRootKey](nil), u.deleteBuckets)
 
 		// Check Filler Calls
 		assert.Equal(t, []customerUsageRootKey{usage1.getRootKey()}, u.fillerRootKeys)
@@ -638,6 +675,184 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		// Check Filler Calls
 		assert.Equal(t, []customerUsageRootKey{usage1.getRootKey()}, u.fillerRootKeys)
 		assert.Equal(t, []uint64{0x00}, u.fillerHashList)
+	})
+
+	t.Run("remove-in-next-levels", func(t *testing.T) {
+		u := newUpdaterTest(2)
+
+		newUsage := func(i int) customerUsage {
+			return customerUsage{
+				Tenant:     "TENANT",
+				CampaignID: 70,
+
+				Phone:    "098700011" + fmt.Sprint(i),
+				TermCode: "TERM0" + fmt.Sprint(i),
+				Hash:     uint64(0x67) << (64 - 8),
+
+				Usage: int64(10 + i),
+				Age:   int64(20 + i),
+			}
+		}
+		usage1 := newUsage(1)
+		usage2 := newUsage(2)
+
+		u.stubFillMulti(
+			mustMarshalBucket(Bucket[customerUsage]{
+				Items:  nil,
+				Bitset: newBitSet(0x67),
+			}),
+			mustMarshalBucket(Bucket[customerUsage]{
+				Items: []customerUsage{usage1, usage2},
+			}),
+		)
+
+		fn := u.updater.DeleteBucket(newContext(), usage1.getRootKey(), usage1.getKey())
+
+		err := fn()
+		assert.Equal(t, nil, err)
+
+		assert.Equal(t, []BucketData[customerUsageRootKey]{
+			{
+				Key: BucketKey[customerUsageRootKey]{
+					RootKey: usage1.getRootKey(),
+					Hash:    0x67 << (64 - 8),
+					Level:   1,
+				},
+				Data: mustMarshalBucket(Bucket[customerUsage]{
+					Items: []customerUsage{
+						usage2,
+					},
+				}),
+			},
+		}, u.upsertBuckets)
+
+		// Check Filler Calls
+		assert.Equal(t, []customerUsageRootKey{usage1.getRootKey(), usage1.getRootKey()}, u.fillerRootKeys)
+		assert.Equal(t, []uint64{0x00, 0x67 << (64 - 8)}, u.fillerHashList)
+	})
+
+	t.Run("error-when-go-too-deep", func(t *testing.T) {
+		u := newUpdaterTest(2)
+
+		newUsage := func(i int) customerUsage {
+			return customerUsage{
+				Tenant:     "TENANT",
+				CampaignID: 70,
+
+				Phone:    "098700011" + fmt.Sprint(i),
+				TermCode: "TERM0" + fmt.Sprint(i),
+				Hash:     uint64(0x7172737475) << (64 - 5*8),
+
+				Usage: int64(10 + i),
+				Age:   int64(20 + i),
+			}
+		}
+		usage1 := newUsage(1)
+
+		u.stubFillMulti(
+			mustMarshalBucket(Bucket[customerUsage]{
+				Bitset: newBitSet(0x71),
+			}),
+			mustMarshalBucket(Bucket[customerUsage]{
+				Bitset: newBitSet(0x72),
+			}),
+			mustMarshalBucket(Bucket[customerUsage]{
+				Bitset: newBitSet(0x73),
+			}),
+			mustMarshalBucket(Bucket[customerUsage]{
+				Bitset: newBitSet(0x74),
+			}),
+			mustMarshalBucket(Bucket[customerUsage]{
+				Bitset: newBitSet(0x75),
+			}),
+		)
+
+		fn := u.updater.DeleteBucket(newContext(), usage1.getRootKey(), usage1.getKey())
+
+		err := fn()
+		assert.Equal(t, ErrHashTooDeep, err)
+		assert.Equal(t, []BucketData[customerUsageRootKey](nil), u.upsertBuckets)
+
+		// Check Filler Calls
+		assert.Equal(t, []customerUsageRootKey{
+			usage1.getRootKey(),
+			usage1.getRootKey(),
+			usage1.getRootKey(),
+			usage1.getRootKey(),
+			usage1.getRootKey(),
+		}, u.fillerRootKeys)
+		assert.Equal(t, []uint64{
+			0x00,
+			0x71 << (64 - 1*8),
+			0x7172 << (64 - 2*8),
+			0x717273 << (64 - 3*8),
+			0x71727374 << (64 - 4*8),
+		}, u.fillerHashList)
+	})
+
+	t.Run("delete-level-two-empty--first-level-clear", func(t *testing.T) {
+		u := newUpdaterTest(2)
+
+		newUsage := func(i int) customerUsage {
+			return customerUsage{
+				Tenant:     "TENANT",
+				CampaignID: 70,
+
+				Phone:    "098700011" + fmt.Sprint(i),
+				TermCode: "TERM0" + fmt.Sprint(i),
+				Hash:     uint64(0x7172737475) << (64 - 5*8),
+
+				Usage: int64(10 + i),
+				Age:   int64(20 + i),
+			}
+		}
+		usage1 := newUsage(1)
+
+		u.stubFillMulti(
+			mustMarshalBucket(Bucket[customerUsage]{
+				Bitset: newBitSet(0x71),
+			}),
+			mustMarshalBucket(Bucket[customerUsage]{
+				Items: []customerUsage{
+					usage1,
+				},
+			}),
+		)
+
+		fn := u.updater.DeleteBucket(newContext(), usage1.getRootKey(), usage1.getKey())
+
+		err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, []BucketData[customerUsageRootKey]{
+			{
+				Key: BucketKey[customerUsageRootKey]{
+					RootKey: usage1.getRootKey(),
+					Hash:    0x00,
+					Level:   0,
+				},
+				Data: mustMarshalBucket(Bucket[customerUsage]{
+					Bitset: newBitSet(),
+				}),
+			},
+		}, u.upsertBuckets)
+
+		assert.Equal(t, []BucketKey[customerUsageRootKey]{
+			{
+				RootKey: usage1.getRootKey(),
+				Hash:    0x71 << (64 - 8),
+				Level:   1,
+			},
+		}, u.deleteBuckets)
+
+		// Check Filler Calls
+		assert.Equal(t, []customerUsageRootKey{
+			usage1.getRootKey(),
+			usage1.getRootKey(),
+		}, u.fillerRootKeys)
+		assert.Equal(t, []uint64{
+			0x00,
+			0x71 << (64 - 1*8),
+		}, u.fillerHashList)
 	})
 }
 

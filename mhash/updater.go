@@ -9,8 +9,9 @@ import (
 type fillFunc = func() ([]byte, error)
 
 type fillResponse[R item.Key] struct {
-	data BucketData[R]
-	err  error
+	data    BucketData[R]
+	deleted bool
+	err     error
 }
 
 type emptyStruct = struct{}
@@ -21,12 +22,15 @@ type fillContext[R item.Key] struct {
 }
 
 // NewUpdater ...
+//
+//revive:disable-next-line:argument-limit
 func NewUpdater[T item.Value, R item.Key, K Key](
 	sess memproxy.Session,
 	getKey func(v T) K,
 	unmarshaler item.Unmarshaler[T],
 	filler Filler[R],
 	upsertFunc func(bucket BucketData[R]),
+	deleteFunc func(bucketKey BucketKey[R]),
 	maxHashesPerBucket int,
 ) *HashUpdater[T, R, K] {
 	fillResult := map[BucketKey[R]]fillResponse[R]{}
@@ -84,7 +88,7 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 	var upsertKeys []BucketKey[R]
 	upsertKeySet := map[BucketKey[R]]struct{}{}
 
-	updateFuncWrap := func(b BucketData[R]) {
+	updateFuncWrap := func(b BucketData[R], deleted bool) {
 		key := b.Key
 		_, existed := upsertKeySet[key]
 		if !existed {
@@ -92,14 +96,20 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 			upsertKeys = append(upsertKeys, key)
 		}
 		fillResult[key] = fillResponse[R]{
-			data: b,
-			err:  nil,
+			data:    b,
+			deleted: deleted,
+			err:     nil,
 		}
 	}
 
 	doUpsert := func() {
 		for _, key := range upsertKeys {
-			upsertFunc(fillResult[key].data)
+			result := fillResult[key]
+			if result.deleted {
+				deleteFunc(result.data.Key)
+			} else {
+				upsertFunc(result.data)
+			}
 		}
 		upsertKeys = nil
 	}
@@ -173,20 +183,32 @@ func updateBucketDataItem[T item.Value, K Key](
 	return false
 }
 
-func (u *HashUpdater[T, R, K]) doUpsertBucket(bucket *Bucket[T], rootKey R, keyHash uint64, level int) error {
+//revive:disable-next-line:flag-parameter
+func (u *HashUpdater[T, R, K]) doUpsertBucket(
+	bucket *Bucket[T],
+	rootKey R, keyHash uint64, level int,
+	deleted bool,
+) error {
+	bucketKey := BucketKey[R]{
+		RootKey: rootKey,
+		Hash:    computeHashAtLevel(keyHash, level),
+		Level:   level,
+	}
+
+	if deleted {
+		u.upsertFunc(BucketData[R]{Key: bucketKey}, deleted)
+		return nil
+	}
+
 	newData, err := bucket.Marshal()
 	if err != nil {
 		return err
 	}
 
 	u.upsertFunc(BucketData[R]{
-		Key: BucketKey[R]{
-			RootKey: rootKey,
-			Hash:    computeHashAtLevel(keyHash, level),
-			Level:   level,
-		},
+		Key:  bucketKey,
 		Data: newData,
-	})
+	}, deleted)
 	return nil
 }
 
@@ -237,13 +259,13 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 		updated := updateBucketDataItem(&bucket, value, u.getKey)
 		if updated {
-			resultErr = u.doUpsertBucket(&bucket, rootKey, keyHash, level)
+			resultErr = u.doUpsertBucket(&bucket, rootKey, keyHash, level, false)
 			return
 		}
 
 		if countNumberOfHashes(&bucket, u.getKey) < u.maxHashesPerBucket {
 			bucket.Items = append(bucket.Items, value)
-			resultErr = u.doUpsertBucket(&bucket, rootKey, keyHash, level)
+			resultErr = u.doUpsertBucket(&bucket, rootKey, keyHash, level, false)
 			return
 		}
 
@@ -251,7 +273,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey)
 
-		err = u.doUpsertBucket(&bucket, rootKey, keyHash, level)
+		err = u.doUpsertBucket(&bucket, rootKey, keyHash, level, false)
 		if err != nil {
 			resultErr = err
 			return
@@ -261,7 +283,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 		resultErr = u.doUpsertBucket(&Bucket[T]{
 			Items: sameHashItems,
-		}, rootKey, keyHash, level+1)
+		}, rootKey, keyHash, level+1, false)
 	}
 
 	doComputeFn()
@@ -273,6 +295,8 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 }
 
 // DeleteBucket ...
+//
+//revive:disable-next-line:cognitive-complexity
 func (u *HashUpdater[T, R, K]) DeleteBucket(
 	ctx context.Context, rootKey R, key K,
 ) func() error {
@@ -282,6 +306,8 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 	var resultErr error
 	var fillerFn func() ([]byte, error)
 	var nextCallFn func()
+
+	var prevBucket Bucket[T]
 
 	doComputeFn := func() {
 		fillerFn = u.filler(ctx, BucketKey[R]{
@@ -305,10 +331,43 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 			return
 		}
 
+		offset := computeBitOffsetAtLevel(keyHash, level)
+		if bucket.Bitset.GetBit(offset) {
+			level++
+			if level >= maxDeepLevels {
+				resultErr = ErrHashTooDeep
+				return
+			}
+			prevBucket = bucket
+			doComputeFn()
+			return
+		}
+
+		prevLen := len(bucket.Items)
+
 		bucket.Items = removeItemInList[T](bucket.Items, func(e T) bool {
 			return u.getKey(e) == key
 		})
-		resultErr = u.doUpsertBucket(&bucket, rootKey, keyHash, level)
+
+		if prevLen == len(bucket.Items) {
+			return
+		}
+
+		deleted := len(bucket.Items) == 0
+		err = u.doUpsertBucket(&bucket, rootKey, keyHash, level, deleted)
+		if err != nil {
+			resultErr = err
+			return
+		}
+
+		if deleted && level >= 1 {
+			prevBucket.Bitset.ClearBit(computeBitOffsetAtLevel(keyHash, level-1))
+			err = u.doUpsertBucket(&prevBucket, rootKey, keyHash, level-1, false)
+			if err != nil {
+				resultErr = err
+				return
+			}
+		}
 	}
 
 	doComputeFn()
