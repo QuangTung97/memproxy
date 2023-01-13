@@ -80,7 +80,7 @@ type HashUpdater[T item.Value, R item.Key, K Key] struct {
 	upsertFunc  func(bucket BucketData[R])
 	doUpsert    func()
 
-	maxItemsPerBucket int
+	maxHashesPerBucket int
 }
 
 // New ...

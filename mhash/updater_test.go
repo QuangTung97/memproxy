@@ -19,7 +19,7 @@ type updaterTest struct {
 	upsertBuckets []BucketData[customerUsageRootKey]
 }
 
-func newUpdaterTest(maxItemsPerBucket int) *updaterTest {
+func newUpdaterTest(maxHashesPerBucket int) *updaterTest {
 	sess := &memproxy.SessionMock{}
 
 	var calls []func()
@@ -57,7 +57,7 @@ func newUpdaterTest(maxItemsPerBucket int) *updaterTest {
 		func(bucket BucketData[customerUsageRootKey]) {
 			u.upsertBuckets = append(u.upsertBuckets, bucket)
 		},
-		maxItemsPerBucket,
+		maxHashesPerBucket,
 	)
 
 	return u
@@ -357,6 +357,58 @@ func TestUpdater(t *testing.T) {
 
 		assert.Equal(t, []customerUsageRootKey{rootKey, rootKey}, u.fillerRootKeys)
 		assert.Equal(t, []uint64{0x00, 0x63 << (64 - 8)}, u.fillerHashList)
+	})
+
+	t.Run("limit-number-of-hashes-not-items", func(t *testing.T) {
+		u := newUpdaterTest(2)
+
+		newUsage := func(i int) customerUsage {
+			return customerUsage{
+				Tenant:     "TENANT",
+				CampaignID: 70,
+
+				Phone:    "098700011" + fmt.Sprint(i),
+				TermCode: "TERM0" + fmt.Sprint(i),
+				Hash:     uint64(0x67) << (64 - 8), // All the same hash
+
+				Usage: int64(10 + i),
+				Age:   int64(20 + i),
+			}
+		}
+
+		usage1 := newUsage(1)
+		usage2 := newUsage(2)
+		usage3 := newUsage(3)
+
+		usage2.Hash = usage3.Hash
+
+		u.stubFillMulti(
+			mustMarshalBucket(Bucket[customerUsage]{
+				Items: []customerUsage{usage1, usage2},
+			}),
+		)
+
+		rootKey := usage3.getRootKey()
+
+		fn := u.updater.UpsertBuckets(newContext(), rootKey, usage3)
+
+		err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, []BucketData[customerUsageRootKey]{
+			{
+				Key: BucketKey[customerUsageRootKey]{
+					RootKey: rootKey,
+					Hash:    0x00,
+					Level:   0,
+				},
+				Data: mustMarshalBucket(Bucket[customerUsage]{
+					Items: []customerUsage{usage1, usage2, usage3},
+				}),
+			},
+		}, u.upsertBuckets)
+
+		assert.Equal(t, []customerUsageRootKey{rootKey}, u.fillerRootKeys)
+		assert.Equal(t, []uint64{0x00}, u.fillerHashList)
 	})
 }
 

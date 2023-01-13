@@ -27,7 +27,7 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 	unmarshaler item.Unmarshaler[T],
 	filler Filler[R],
 	upsertFunc func(bucket BucketData[R]),
-	maxItemsPerBucket int,
+	maxHashesPerBucket int,
 ) *HashUpdater[T, R, K] {
 	fillResult := map[BucketKey[R]]fillResponse[R]{}
 
@@ -112,8 +112,19 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 		upsertFunc:  updateFuncWrap,
 		doUpsert:    doUpsert,
 
-		maxItemsPerBucket: maxItemsPerBucket,
+		maxHashesPerBucket: maxHashesPerBucket,
 	}
+}
+
+func countNumberOfHashes[T item.Value, K Key](
+	b *Bucket[T], getKey func(T) K,
+) int {
+	hashSet := map[uint64]struct{}{}
+	for _, bucketItem := range b.Items {
+		itemHash := getKey(bucketItem).Hash()
+		hashSet[itemHash] = struct{}{}
+	}
+	return len(hashSet)
 }
 
 func splitBucketItemsWithAndWithoutSameHash[T item.Value, K Key](
@@ -227,7 +238,7 @@ func (u *HashUpdater[T, R, K]) UpsertBuckets(
 			return
 		}
 
-		if len(bucket.Items) < u.maxItemsPerBucket {
+		if countNumberOfHashes(&bucket, u.getKey) < u.maxHashesPerBucket {
 			bucket.Items = append(bucket.Items, value)
 			upsertBucket(bucket, level)
 			return
@@ -252,5 +263,14 @@ func (u *HashUpdater[T, R, K]) UpsertBuckets(
 		u.sess.Execute()
 		u.doUpsert()
 		return resultErr
+	}
+}
+
+// DeleteBuckets ...
+func (*HashUpdater[T, R, K]) DeleteBuckets(
+	_ context.Context, _ R,
+) func() error {
+	return func() error {
+		return nil
 	}
 }
