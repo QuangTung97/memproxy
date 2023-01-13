@@ -173,8 +173,25 @@ func updateBucketDataItem[T item.Value, K Key](
 	return false
 }
 
-// UpsertBuckets ...
-func (u *HashUpdater[T, R, K]) UpsertBuckets(
+func (u *HashUpdater[T, R, K]) doUpsertBucket(bucket *Bucket[T], rootKey R, keyHash uint64, level int) error {
+	newData, err := bucket.Marshal()
+	if err != nil {
+		return err
+	}
+
+	u.upsertFunc(BucketData[R]{
+		Key: BucketKey[R]{
+			RootKey: rootKey,
+			Hash:    computeHashAtLevel(keyHash, level),
+			Level:   level,
+		},
+		Data: newData,
+	})
+	return nil
+}
+
+// UpsertBucket ...
+func (u *HashUpdater[T, R, K]) UpsertBucket(
 	ctx context.Context, rootKey R, value T,
 ) func() error {
 	key := u.getKey(value)
@@ -182,7 +199,6 @@ func (u *HashUpdater[T, R, K]) UpsertBuckets(
 
 	level := 0
 	var resultErr error
-
 	var fillerFn func() ([]byte, error)
 	var nextCallFn func()
 
@@ -193,23 +209,6 @@ func (u *HashUpdater[T, R, K]) UpsertBuckets(
 			Level:   level,
 		})
 		u.sess.AddNextCall(nextCallFn)
-	}
-
-	upsertBucket := func(bucket Bucket[T], level int) {
-		newData, err := bucket.Marshal()
-		if err != nil {
-			resultErr = err
-			return
-		}
-
-		u.upsertFunc(BucketData[R]{
-			Key: BucketKey[R]{
-				RootKey: rootKey,
-				Hash:    computeHashAtLevel(keyHash, level),
-				Level:   level,
-			},
-			Data: newData,
-		})
 	}
 
 	nextCallFn = func() {
@@ -227,20 +226,24 @@ func (u *HashUpdater[T, R, K]) UpsertBuckets(
 
 		offset := computeBitOffsetAtLevel(keyHash, level)
 		if bucket.Bitset.GetBit(offset) {
-			level++ // TODO Error Too Many Levels
+			level++
+			if level >= maxDeepLevels {
+				resultErr = ErrHashTooDeep
+				return
+			}
 			doComputeFn()
 			return
 		}
 
 		updated := updateBucketDataItem(&bucket, value, u.getKey)
 		if updated {
-			upsertBucket(bucket, level)
+			resultErr = u.doUpsertBucket(&bucket, rootKey, keyHash, level)
 			return
 		}
 
 		if countNumberOfHashes(&bucket, u.getKey) < u.maxHashesPerBucket {
 			bucket.Items = append(bucket.Items, value)
-			upsertBucket(bucket, level)
+			resultErr = u.doUpsertBucket(&bucket, rootKey, keyHash, level)
 			return
 		}
 
@@ -248,29 +251,88 @@ func (u *HashUpdater[T, R, K]) UpsertBuckets(
 
 		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey)
 
-		upsertBucket(bucket, level)
+		err = u.doUpsertBucket(&bucket, rootKey, keyHash, level)
+		if err != nil {
+			resultErr = err
+			return
+		}
 
 		sameHashItems = append(sameHashItems, value)
 
-		upsertBucket(Bucket[T]{
+		resultErr = u.doUpsertBucket(&Bucket[T]{
 			Items: sameHashItems,
-		}, level+1)
+		}, rootKey, keyHash, level+1)
 	}
 
 	doComputeFn()
 
 	return func() error {
-		u.sess.Execute()
-		u.doUpsert()
+		u.execute()
 		return resultErr
 	}
 }
 
-// DeleteBuckets ...
-func (*HashUpdater[T, R, K]) DeleteBuckets(
-	_ context.Context, _ R,
+// DeleteBucket ...
+func (u *HashUpdater[T, R, K]) DeleteBucket(
+	ctx context.Context, rootKey R, key K,
 ) func() error {
-	return func() error {
-		return nil
+	keyHash := key.Hash()
+
+	level := 0
+	var resultErr error
+	var fillerFn func() ([]byte, error)
+	var nextCallFn func()
+
+	doComputeFn := func() {
+		fillerFn = u.filler(ctx, BucketKey[R]{
+			RootKey: rootKey,
+			Hash:    computeHashAtLevel(keyHash, level),
+			Level:   level,
+		})
+		u.sess.AddNextCall(nextCallFn)
 	}
+
+	nextCallFn = func() {
+		data, err := fillerFn()
+		if err != nil {
+			resultErr = err
+			return
+		}
+
+		bucket, err := u.unmarshaler(data)
+		if err != nil {
+			resultErr = err
+			return
+		}
+
+		bucket.Items = removeItemInList[T](bucket.Items, func(e T) bool {
+			return u.getKey(e) == key
+		})
+		resultErr = u.doUpsertBucket(&bucket, rootKey, keyHash, level)
+	}
+
+	doComputeFn()
+
+	return func() error {
+		u.execute()
+		return resultErr
+	}
+}
+
+func (u *HashUpdater[T, R, K]) execute() {
+	u.sess.Execute()
+	u.doUpsert()
+}
+
+func removeItemInList[T any](array []T, cond func(e T) bool) []T {
+	n := len(array)
+	for i := 0; i < n; {
+		if cond(array[i]) {
+			array[i], array[n-1] = array[n-1], array[i]
+			n--
+		} else {
+			i++
+		}
+	}
+	return array[:n]
 }
