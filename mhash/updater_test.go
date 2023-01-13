@@ -856,9 +856,12 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 			}
 		}
 		usage1 := newUsage(1)
+		usage2 := newUsage(2)
+		usage2.Hash = 0x88 << (64 - 8)
 
 		u.stubFillMulti(
 			mustMarshalBucket(Bucket[customerUsage]{
+				Items:  []customerUsage{usage2},
 				Bitset: newBitSet(0x71),
 			}),
 			mustMarshalBucket(Bucket[customerUsage]{
@@ -880,6 +883,7 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 					Level:   0,
 				},
 				Data: mustMarshalBucket(Bucket[customerUsage]{
+					Items:  []customerUsage{usage2},
 					Bitset: newBitSet(),
 				}),
 			},
@@ -901,6 +905,149 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		assert.Equal(t, []uint64{
 			0x00,
 			0x71 << (64 - 1*8),
+		}, u.fillerHashList)
+	})
+
+	t.Run("delete-level-three--level-one-and-two-both-will-be-deleted", func(t *testing.T) {
+		u := newUpdaterTest(2)
+
+		newUsage := func(i int) customerUsage {
+			return customerUsage{
+				Tenant:     "TENANT",
+				CampaignID: 70,
+
+				Phone:    "098700011" + fmt.Sprint(i),
+				TermCode: "TERM0" + fmt.Sprint(i),
+				Hash:     uint64(0x7172737475) << (64 - 5*8),
+
+				Usage: int64(10 + i),
+				Age:   int64(20 + i),
+			}
+		}
+		usage1 := newUsage(1)
+
+		u.stubFillMulti(
+			mustMarshalBucket(Bucket[customerUsage]{
+				Bitset: newBitSet(0x71),
+			}),
+			mustMarshalBucket(Bucket[customerUsage]{
+				Bitset: newBitSet(0x72),
+			}),
+			mustMarshalBucket(Bucket[customerUsage]{
+				Items: []customerUsage{
+					usage1,
+				},
+			}),
+		)
+
+		fn := u.updater.DeleteBucket(newContext(), usage1.getRootKey(), usage1.getKey())
+
+		err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, []BucketData[customerUsageRootKey](nil), u.upsertBuckets)
+
+		assert.Equal(t, []BucketKey[customerUsageRootKey]{
+			{
+				RootKey: usage1.getRootKey(),
+				Hash:    0x7172 << (64 - 2*8),
+				Level:   2,
+			},
+			{
+				RootKey: usage1.getRootKey(),
+				Hash:    0x71 << (64 - 8),
+				Level:   1,
+			},
+			{
+				RootKey: usage1.getRootKey(),
+				Hash:    0x00,
+				Level:   0,
+			},
+		}, u.deleteBuckets)
+
+		// Check Filler Calls
+		assert.Equal(t, []customerUsageRootKey{
+			usage1.getRootKey(),
+			usage1.getRootKey(),
+			usage1.getRootKey(),
+		}, u.fillerRootKeys)
+		assert.Equal(t, []uint64{
+			0x00,
+			0x71 << (64 - 1*8),
+			0x7172 << (64 - 2*8),
+		}, u.fillerHashList)
+	})
+
+	t.Run("delete-level-three--level-two-not-be-deleted", func(t *testing.T) {
+		u := newUpdaterTest(2)
+
+		newUsage := func(i int) customerUsage {
+			return customerUsage{
+				Tenant:     "TENANT",
+				CampaignID: 70,
+
+				Phone:    "098700011" + fmt.Sprint(i),
+				TermCode: "TERM0" + fmt.Sprint(i),
+				Hash:     uint64(0x7172737475) << (64 - 5*8),
+
+				Usage: int64(10 + i),
+				Age:   int64(20 + i),
+			}
+		}
+		usage1 := newUsage(1)
+		usage2 := newUsage(2)
+		usage2.Hash = 0x88 << (64 - 8)
+
+		u.stubFillMulti(
+			mustMarshalBucket(Bucket[customerUsage]{
+				Bitset: newBitSet(0x71),
+			}),
+			mustMarshalBucket(Bucket[customerUsage]{
+				Items:  []customerUsage{usage2},
+				Bitset: newBitSet(0x72),
+			}),
+			mustMarshalBucket(Bucket[customerUsage]{
+				Items: []customerUsage{
+					usage1,
+				},
+			}),
+		)
+
+		fn := u.updater.DeleteBucket(newContext(), usage1.getRootKey(), usage1.getKey())
+
+		err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, []BucketData[customerUsageRootKey]{
+			{
+				Key: BucketKey[customerUsageRootKey]{
+					RootKey: usage1.getRootKey(),
+					Hash:    0x71 << (64 - 8),
+					Level:   1,
+				},
+				Data: mustMarshalBucket(Bucket[customerUsage]{
+					Items:  []customerUsage{usage2},
+					Bitset: newBitSet(),
+				}),
+			},
+		}, u.upsertBuckets)
+
+		assert.Equal(t, []BucketKey[customerUsageRootKey]{
+			{
+				RootKey: usage1.getRootKey(),
+				Hash:    0x7172 << (64 - 2*8),
+				Level:   2,
+			},
+		}, u.deleteBuckets)
+
+		// Check Filler Calls
+		assert.Equal(t, []customerUsageRootKey{
+			usage1.getRootKey(),
+			usage1.getRootKey(),
+			usage1.getRootKey(),
+		}, u.fillerRootKeys)
+		assert.Equal(t, []uint64{
+			0x00,
+			0x71 << (64 - 1*8),
+			0x7172 << (64 - 2*8),
 		}, u.fillerHashList)
 	})
 }
