@@ -315,3 +315,195 @@ func TestSessionAddDelayedCall_Delay_Call_Negative_Duration(t *testing.T) {
 	assert.Equal(t, []time.Duration(nil), s.sleepCalls)
 	assert.Equal(t, []int{11}, calls)
 }
+
+func TestSession_Lower_Priority(t *testing.T) {
+	s := newSessionTest()
+
+	var calls []int
+
+	newCall := func(n int) *callMock {
+		return &callMock{
+			fn: func() {
+				calls = append(calls, n)
+			},
+		}
+	}
+
+	fn1 := newCall(11)
+	fn2 := newCall(12)
+	fn3 := newCall(13)
+	fn4 := newCall(14)
+
+	s.sess.AddNextCall(fn1.get())
+
+	lower := s.sess.GetLower()
+	lower.AddNextCall(fn2.get())
+
+	s.sess.AddNextCall(fn3.get())
+
+	lower.AddNextCall(fn4.get())
+
+	lower.Execute()
+
+	assert.Equal(t, []int{11, 13, 12, 14}, calls)
+}
+
+func TestSession_Not_New_Lower__When_Already_Init(t *testing.T) {
+	s := newSessionTest()
+
+	lower1 := s.sess.GetLower()
+	lower2 := s.sess.GetLower()
+
+	assert.Same(t, lower1, lower2)
+}
+
+func TestSession_Lower_Priority__After_AddNextCall(t *testing.T) {
+	s := newSessionTest()
+
+	var calls []int
+
+	newCall := func(n int) *callMock {
+		return &callMock{
+			fn: func() {
+				calls = append(calls, n)
+			},
+		}
+	}
+
+	fn1 := newCall(11)
+	fn2 := newCall(12)
+	fn3 := newCall(13)
+	fn4 := newCall(14)
+	fn5 := newCall(15)
+
+	s.sess.AddNextCall(fn1.get())
+
+	lower := s.sess.GetLower()
+	lower.AddNextCall(fn2.get())
+
+	s.sess.AddNextCall(fn3.get())
+
+	lower.AddNextCall(fn4.get())
+
+	lower2 := lower.GetLower()
+	lower2.AddNextCall(fn5.get())
+
+	lower2.Execute()
+
+	assert.Equal(t, []int{11, 13, 12, 14, 15}, calls)
+}
+
+func TestSession_Lower_Priority__Before_AddNextCall__And_After_Execute__Multi_Levels(t *testing.T) {
+	s := newSessionTest()
+
+	var calls []int
+
+	newCall := func(n int) *callMock {
+		return &callMock{
+			fn: func() {
+				calls = append(calls, n)
+			},
+		}
+	}
+
+	fn1 := newCall(11)
+	fn2 := newCall(12)
+	fn3 := newCall(13)
+	fn4 := newCall(14)
+	fn5 := newCall(15)
+
+	s.sess.AddNextCall(fn1.get())
+
+	lower := s.sess.GetLower()
+	lower.AddNextCall(fn2.get())
+
+	s.sess.AddNextCall(fn3.get())
+
+	lower2 := lower.GetLower()
+	lower2.AddNextCall(fn5.get())
+
+	s.sess.AddNextCall(fn4.get())
+
+	lower2.Execute()
+
+	assert.Equal(t, []int{11, 13, 14, 12, 15}, calls)
+
+	calls = []int{}
+	s.sess.AddNextCall(fn4.get())
+	lower2.Execute()
+	assert.Equal(t, []int{14}, calls)
+}
+
+func TestSession_Lower_Priority__Delayed_Call(t *testing.T) {
+	s := newSessionTest()
+
+	var calls []int
+
+	newCall := func(n int) *callMock {
+		return &callMock{
+			fn: func() {
+				calls = append(calls, n)
+			},
+		}
+	}
+
+	fn1 := newCall(11)
+	fn2 := newCall(12)
+	fn3 := newCall(13)
+
+	s.sess.AddDelayedCall(10*time.Millisecond, fn1.get())
+
+	lower := s.sess.GetLower()
+	lower.AddDelayedCall(5*time.Millisecond, fn2.get())
+
+	s.sess.AddDelayedCall(12*time.Millisecond, fn3.get())
+
+	lower.Execute()
+
+	assert.Equal(t, []int{11, 13, 12}, calls)
+
+	// 2 calls + 1 now at the start + 1 after sleep + 1 after sleep for the higher
+	// 1 calls + 1 now at the start
+	assert.Equal(t, 7, s.nowCalls)
+	assert.Equal(t, []time.Duration{10 * time.Millisecond, 2 * time.Millisecond}, s.sleepCalls)
+	assert.Equal(t, 1, fn1.count)
+}
+
+func TestSession_Lower_Priority__Delayed_Call__Sleep_Again_In_Lower_Session(t *testing.T) {
+	s := newSessionTest()
+
+	var calls []int
+
+	newCall := func(n int) *callMock {
+		return &callMock{
+			fn: func() {
+				calls = append(calls, n)
+			},
+		}
+	}
+
+	fn1 := newCall(11)
+	fn2 := newCall(12)
+	fn3 := newCall(13)
+
+	s.sess.AddDelayedCall(10*time.Millisecond, fn1.get())
+
+	lower := s.sess.GetLower()
+	lower.AddDelayedCall(15*time.Millisecond, fn2.get())
+
+	s.sess.AddDelayedCall(12*time.Millisecond, fn3.get())
+
+	lower.Execute()
+
+	assert.Equal(t, []int{11, 13, 12}, calls)
+
+	// 2 calls + 1 now at the start + 1 after sleep + 1 after sleep -- for the higher
+	// 1 calls + 1 now at the start + 1 after sleep
+	assert.Equal(t, 8, s.nowCalls)
+	assert.Equal(t, []time.Duration{
+		10 * time.Millisecond,
+		2 * time.Millisecond,
+		3 * time.Millisecond,
+	}, s.sleepCalls)
+	assert.Equal(t, 1, fn1.count)
+}

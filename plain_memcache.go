@@ -13,6 +13,7 @@ type plainMemcacheImpl struct {
 var _ Memcache = &plainMemcacheImpl{}
 
 type plainPipelineImpl struct {
+	sess          Session
 	pipeline      *memcache.Pipeline
 	leaseDuration uint32
 }
@@ -28,11 +29,16 @@ func NewPlainMemcache(client *memcache.Client, leaseDuration uint32) Memcache {
 }
 
 // Pipeline ...
-func (m *plainMemcacheImpl) Pipeline(_ context.Context, _ Session, _ ...PipelineOption) Pipeline {
+func (m *plainMemcacheImpl) Pipeline(_ context.Context, sess Session, _ ...PipelineOption) Pipeline {
 	return &plainPipelineImpl{
+		sess:          sess,
 		pipeline:      m.client.Pipeline(),
 		leaseDuration: m.leaseDuration,
 	}
+}
+
+func (p *plainPipelineImpl) LowerSession() Session {
+	return p.sess.GetLower()
 }
 
 // Get ...

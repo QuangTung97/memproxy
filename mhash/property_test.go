@@ -172,10 +172,5 @@ func TestHash_PropertyBased__Upsert_And_Get(t *testing.T) {
 
 		assert.Equal(t, ok, result.Valid)
 		assert.Equal(t, expected, result.Data)
-		if ok {
-			fmt.Println("OK", i)
-		} else {
-			fmt.Println("NOT OK", i)
-		}
 	}
 }

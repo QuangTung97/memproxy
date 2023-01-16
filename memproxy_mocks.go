@@ -115,6 +115,9 @@ var _ Pipeline = &PipelineMock{}
 //			LeaseSetFunc: func(key string, data []byte, cas uint64, options LeaseSetOptions) func() (LeaseSetResponse, error) {
 //				panic("mock out the LeaseSet method")
 //			},
+//			LowerSessionFunc: func() Session {
+//				panic("mock out the LowerSession method")
+//			},
 //		}
 //
 //		// use mockedPipeline in code that requires Pipeline
@@ -139,6 +142,9 @@ type PipelineMock struct {
 
 	// LeaseSetFunc mocks the LeaseSet method.
 	LeaseSetFunc func(key string, data []byte, cas uint64, options LeaseSetOptions) func() (LeaseSetResponse, error)
+
+	// LowerSessionFunc mocks the LowerSession method.
+	LowerSessionFunc func() Session
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -180,13 +186,17 @@ type PipelineMock struct {
 			// Options is the options argument value.
 			Options LeaseSetOptions
 		}
+		// LowerSession holds details about calls to the LowerSession method.
+		LowerSession []struct {
+		}
 	}
-	lockDelete   sync.RWMutex
-	lockExecute  sync.RWMutex
-	lockFinish   sync.RWMutex
-	lockGet      sync.RWMutex
-	lockLeaseGet sync.RWMutex
-	lockLeaseSet sync.RWMutex
+	lockDelete       sync.RWMutex
+	lockExecute      sync.RWMutex
+	lockFinish       sync.RWMutex
+	lockGet          sync.RWMutex
+	lockLeaseGet     sync.RWMutex
+	lockLeaseSet     sync.RWMutex
+	lockLowerSession sync.RWMutex
 }
 
 // Delete calls DeleteFunc.
@@ -395,6 +405,33 @@ func (mock *PipelineMock) LeaseSetCalls() []struct {
 	return calls
 }
 
+// LowerSession calls LowerSessionFunc.
+func (mock *PipelineMock) LowerSession() Session {
+	if mock.LowerSessionFunc == nil {
+		panic("PipelineMock.LowerSessionFunc: method is nil but Pipeline.LowerSession was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockLowerSession.Lock()
+	mock.calls.LowerSession = append(mock.calls.LowerSession, callInfo)
+	mock.lockLowerSession.Unlock()
+	return mock.LowerSessionFunc()
+}
+
+// LowerSessionCalls gets all the calls that were made to LowerSession.
+// Check the length with:
+//
+//	len(mockedPipeline.LowerSessionCalls())
+func (mock *PipelineMock) LowerSessionCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockLowerSession.RLock()
+	calls = mock.calls.LowerSession
+	mock.lockLowerSession.RUnlock()
+	return calls
+}
+
 // Ensure, that SessionProviderMock does implement SessionProvider.
 // If this is not the case, regenerate this file with moq.
 var _ SessionProvider = &SessionProviderMock{}
@@ -473,6 +510,9 @@ var _ Session = &SessionMock{}
 //			ExecuteFunc: func()  {
 //				panic("mock out the Execute method")
 //			},
+//			GetLowerFunc: func() Session {
+//				panic("mock out the GetLower method")
+//			},
 //		}
 //
 //		// use mockedSession in code that requires Session
@@ -488,6 +528,9 @@ type SessionMock struct {
 
 	// ExecuteFunc mocks the Execute method.
 	ExecuteFunc func()
+
+	// GetLowerFunc mocks the GetLower method.
+	GetLowerFunc func() Session
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -506,10 +549,14 @@ type SessionMock struct {
 		// Execute holds details about calls to the Execute method.
 		Execute []struct {
 		}
+		// GetLower holds details about calls to the GetLower method.
+		GetLower []struct {
+		}
 	}
 	lockAddDelayedCall sync.RWMutex
 	lockAddNextCall    sync.RWMutex
 	lockExecute        sync.RWMutex
+	lockGetLower       sync.RWMutex
 }
 
 // AddDelayedCall calls AddDelayedCallFunc.
@@ -607,6 +654,33 @@ func (mock *SessionMock) ExecuteCalls() []struct {
 	return calls
 }
 
+// GetLower calls GetLowerFunc.
+func (mock *SessionMock) GetLower() Session {
+	if mock.GetLowerFunc == nil {
+		panic("SessionMock.GetLowerFunc: method is nil but Session.GetLower was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockGetLower.Lock()
+	mock.calls.GetLower = append(mock.calls.GetLower, callInfo)
+	mock.lockGetLower.Unlock()
+	return mock.GetLowerFunc()
+}
+
+// GetLowerCalls gets all the calls that were made to GetLower.
+// Check the length with:
+//
+//	len(mockedSession.GetLowerCalls())
+func (mock *SessionMock) GetLowerCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockGetLower.RLock()
+	calls = mock.calls.GetLower
+	mock.lockGetLower.RUnlock()
+	return calls
+}
+
 // Ensure, that FillerMock does implement Filler.
 // If this is not the case, regenerate this file with moq.
 var _ Filler = &FillerMock{}
@@ -617,7 +691,7 @@ var _ Filler = &FillerMock{}
 //
 //		// make and configure a mocked Filler
 //		mockedFiller := &FillerMock{
-//			FillFunc: func(ctx context.Context, params interface{}, completeFn func(resp FillResponse, err error))  {
+//			FillFunc: func(ctx context.Context, params any, completeFn func(resp FillResponse, err error))  {
 //				panic("mock out the Fill method")
 //			},
 //		}
@@ -628,7 +702,7 @@ var _ Filler = &FillerMock{}
 //	}
 type FillerMock struct {
 	// FillFunc mocks the Fill method.
-	FillFunc func(ctx context.Context, params interface{}, completeFn func(resp FillResponse, err error))
+	FillFunc func(ctx context.Context, params any, completeFn func(resp FillResponse, err error))
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -637,7 +711,7 @@ type FillerMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Params is the params argument value.
-			Params interface{}
+			Params any
 			// CompleteFn is the completeFn argument value.
 			CompleteFn func(resp FillResponse, err error)
 		}
@@ -646,13 +720,13 @@ type FillerMock struct {
 }
 
 // Fill calls FillFunc.
-func (mock *FillerMock) Fill(ctx context.Context, params interface{}, completeFn func(resp FillResponse, err error)) {
+func (mock *FillerMock) Fill(ctx context.Context, params any, completeFn func(resp FillResponse, err error)) {
 	if mock.FillFunc == nil {
 		panic("FillerMock.FillFunc: method is nil but Filler.Fill was just called")
 	}
 	callInfo := struct {
 		Ctx        context.Context
-		Params     interface{}
+		Params     any
 		CompleteFn func(resp FillResponse, err error)
 	}{
 		Ctx:        ctx,
@@ -671,12 +745,12 @@ func (mock *FillerMock) Fill(ctx context.Context, params interface{}, completeFn
 //	len(mockedFiller.FillCalls())
 func (mock *FillerMock) FillCalls() []struct {
 	Ctx        context.Context
-	Params     interface{}
+	Params     any
 	CompleteFn func(resp FillResponse, err error)
 } {
 	var calls []struct {
 		Ctx        context.Context
-		Params     interface{}
+		Params     any
 		CompleteFn func(resp FillResponse, err error)
 	}
 	mock.lockFill.RLock()
@@ -695,7 +769,7 @@ var _ FillerFactory = &FillerFactoryMock{}
 //
 //		// make and configure a mocked FillerFactory
 //		mockedFillerFactory := &FillerFactoryMock{
-//			NewFunc: func(sess Session, params interface{}) Filler {
+//			NewFunc: func(sess Session, params any) Filler {
 //				panic("mock out the New method")
 //			},
 //		}
@@ -706,7 +780,7 @@ var _ FillerFactory = &FillerFactoryMock{}
 //	}
 type FillerFactoryMock struct {
 	// NewFunc mocks the New method.
-	NewFunc func(sess Session, params interface{}) Filler
+	NewFunc func(sess Session, params any) Filler
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -715,20 +789,20 @@ type FillerFactoryMock struct {
 			// Sess is the sess argument value.
 			Sess Session
 			// Params is the params argument value.
-			Params interface{}
+			Params any
 		}
 	}
 	lockNew sync.RWMutex
 }
 
 // New calls NewFunc.
-func (mock *FillerFactoryMock) New(sess Session, params interface{}) Filler {
+func (mock *FillerFactoryMock) New(sess Session, params any) Filler {
 	if mock.NewFunc == nil {
 		panic("FillerFactoryMock.NewFunc: method is nil but FillerFactory.New was just called")
 	}
 	callInfo := struct {
 		Sess   Session
-		Params interface{}
+		Params any
 	}{
 		Sess:   sess,
 		Params: params,
@@ -745,11 +819,11 @@ func (mock *FillerFactoryMock) New(sess Session, params interface{}) Filler {
 //	len(mockedFillerFactory.NewCalls())
 func (mock *FillerFactoryMock) NewCalls() []struct {
 	Sess   Session
-	Params interface{}
+	Params any
 } {
 	var calls []struct {
 		Sess   Session
-		Params interface{}
+		Params any
 	}
 	mock.lockNew.RLock()
 	calls = mock.calls.New

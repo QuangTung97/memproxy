@@ -21,6 +21,9 @@ type Pipeline interface {
 	Delete(key string, options DeleteOptions) func() (DeleteResponse, error)
 	Execute()
 	Finish()
+
+	// LowerSession returns the lower priority session
+	LowerSession() Session
 }
 
 // SessionProvider for controlling delayed tasks
@@ -33,6 +36,8 @@ type Session interface {
 	AddNextCall(fn func())
 	AddDelayedCall(d time.Duration, fn func())
 	Execute()
+
+	GetLower() Session
 }
 
 // GetOptions specify GET options
