@@ -334,6 +334,94 @@ func TestHash(t *testing.T) {
 		assert.Equal(t, "TENANT01:41:22", getCalls[1].Key)
 	})
 
+	t.Run("get-first-level-returns-with-bit-set--prefix-not-match--not-continue", func(t *testing.T) {
+		h := newHashTest()
+
+		const keyHash = 0x2233 << (64 - 16)
+
+		h.stubLeaseGetMulti(
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusFound,
+				CAS:    5566,
+				Data: mustMarshalBucket(2, 0x24, Bucket[customerUsage]{
+					Items:  []customerUsage{},
+					Bitset: newBitSet(0x33),
+				}),
+			},
+		)
+
+		fn := h.hash.Get(newContext(),
+			customerUsageRootKey{
+				Tenant:     "TENANT01",
+				CampaignID: 41,
+			}, customerUsageKey{
+				Phone:    "0987000111",
+				TermCode: "TERM01",
+				hash:     keyHash,
+			},
+		)
+
+		resp, err := fn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Null[customerUsage]{}, resp)
+
+		getCalls := h.pipe.LeaseGetCalls()
+		assert.Equal(t, 1, len(getCalls))
+		assert.Equal(t, "TENANT01:41:", getCalls[0].Key)
+	})
+
+	t.Run("get-first-level-returns-with-bit-set--prefix-not-match--search-current", func(t *testing.T) {
+		h := newHashTest()
+
+		const keyHash = 0x2233 << (64 - 16)
+
+		usage := customerUsage{
+			Tenant:     "TENANT01",
+			CampaignID: 41,
+			Phone:      "0987000111",
+			TermCode:   "TERM01",
+			Hash:       keyHash,
+
+			Usage: 12,
+			Age:   22,
+		}
+
+		h.stubLeaseGetMulti(
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusFound,
+				CAS:    5566,
+				Data: mustMarshalBucket(2, 0x24, Bucket[customerUsage]{
+					Items:  []customerUsage{usage},
+					Bitset: newBitSet(0x33),
+				}),
+			},
+		)
+
+		fn := h.hash.Get(newContext(),
+			customerUsageRootKey{
+				Tenant:     "TENANT01",
+				CampaignID: 41,
+			}, customerUsageKey{
+				Phone:    "0987000111",
+				TermCode: "TERM01",
+				hash:     keyHash,
+			},
+		)
+
+		resp, err := fn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Null[customerUsage]{
+			Valid: true,
+			Data:  usage,
+		}, resp)
+
+		getCalls := h.pipe.LeaseGetCalls()
+		assert.Equal(t, 1, len(getCalls))
+		assert.Equal(t, "TENANT01:41:", getCalls[0].Key)
+	})
+
 	t.Run("total-4-levels", func(t *testing.T) {
 		h := newHashTest()
 

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"testing"
+	"time"
 )
 
 type propertyTest struct {
@@ -88,6 +89,10 @@ func newPropertyTest() *propertyTest {
 }
 
 func TestHash_PropertyBased__Upsert_And_Get(t *testing.T) {
+	seed := time.Now().Unix()
+	fmt.Println("SEED:", seed)
+	rand.Seed(seed)
+
 	p := newPropertyTest()
 
 	rootKeys := []customerUsageRootKey{

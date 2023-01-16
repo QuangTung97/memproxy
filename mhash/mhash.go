@@ -140,6 +140,36 @@ type callContext struct {
 	doComputeFn func()
 }
 
+func checkContinueOnNextLevel[T item.Value](
+	bucket *Bucket[T], keyHash uint64,
+	callCtx *callContext,
+) (continuing bool) {
+	if bucket.NextLevel == 0 {
+		return true
+	}
+
+	mask := computeMaskAtLevel(bucket.NextLevel - 1)
+	if (keyHash & mask) != bucket.NextLevelPrefix {
+		return true
+	}
+
+	offset := computeBitOffsetForNextLevel(keyHash, bucket.NextLevel)
+	if !bucket.Bitset.GetBit(offset) {
+		return true
+	}
+
+	callCtx.level = bucket.NextLevel
+
+	callCtx.levelCalls++
+	if callCtx.levelCalls >= maxDeepLevels {
+		callCtx.err = ErrHashTooDeep
+		return false
+	}
+
+	callCtx.doComputeFn()
+	return false
+}
+
 // Get ...
 func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[T], error) {
 	keyHash := key.Hash()
@@ -171,7 +201,7 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 			return
 		}
 
-		continuing := checkNextContinuingOnLevel(&bucket, keyHash, &callCtx)
+		continuing := checkContinueOnNextLevel(&bucket, keyHash, &callCtx)
 		if !continuing {
 			return
 		}

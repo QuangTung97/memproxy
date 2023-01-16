@@ -249,31 +249,6 @@ func (u *HashUpdater[T, R, K]) doUpsertBucket(
 	return nil
 }
 
-func checkNextContinuingOnLevel[T item.Value](
-	bucket *Bucket[T], keyHash uint64,
-	callCtx *callContext,
-) (continuing bool) {
-	if bucket.NextLevel == 0 {
-		return true
-	}
-
-	offset := computeBitOffsetForNextLevel(keyHash, bucket.NextLevel)
-	if !bucket.Bitset.GetBit(offset) {
-		return true
-	}
-
-	callCtx.level = bucket.NextLevel
-
-	callCtx.levelCalls++
-	if callCtx.levelCalls >= maxDeepLevels {
-		callCtx.err = ErrHashTooDeep
-		return false
-	}
-
-	callCtx.doComputeFn()
-	return false
-}
-
 // UpsertBucket ...
 func (u *HashUpdater[T, R, K]) UpsertBucket(
 	ctx context.Context, rootKey R, value T,
@@ -312,7 +287,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 			return
 		}
 
-		continuing := checkNextContinuingOnLevel(
+		continuing := checkContinueOnNextLevel(
 			&bucket, keyHash, &updateCtx,
 		)
 		if !continuing {
@@ -409,7 +384,7 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 			level:  callCtx.level,
 		})
 
-		continuing := checkNextContinuingOnLevel(&bucket, keyHash, &callCtx)
+		continuing := checkContinueOnNextLevel(&bucket, keyHash, &callCtx)
 		if !continuing {
 			return
 		}
