@@ -8,21 +8,23 @@ import (
 
 type fillFunc = func() ([]byte, error)
 
-type fillResponse[R item.Key] struct {
-	data    BucketData[R]
+type fillResponse[T item.Value] struct {
+	bucket  Bucket[T]
 	deleted bool
 	err     error
 }
 
 type emptyStruct = struct{}
 
-type fillContext[R item.Key] struct {
+type fillContext[T item.Value, R item.Key] struct {
+	alreadyFilled bool
+
 	keys   []BucketKey[R]
 	keySet map[BucketKey[R]]emptyStruct
 }
 
-func (c *fillContext[R]) appendFillKey(
-	key BucketKey[R], fillResult map[BucketKey[R]]fillResponse[R],
+func (c *fillContext[T, R]) appendFillKey(
+	key BucketKey[R], fillResult map[BucketKey[R]]fillResponse[T],
 ) {
 	_, existed := c.keySet[key]
 	if existed {
@@ -45,43 +47,47 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 	sess memproxy.Session,
 	getKey func(v T) K,
 	unmarshaler item.Unmarshaler[T],
-	filler Filler[R],
+	inputFiller Filler[R],
 	upsertFunc func(bucket BucketData[R]),
 	deleteFunc func(bucketKey BucketKey[R]),
 	maxHashesPerBucket int,
 ) *HashUpdater[T, R, K] {
-	fillResult := map[BucketKey[R]]fillResponse[R]{}
+	fillResult := map[BucketKey[R]]fillResponse[T]{}
 
-	var globalFillCtx *fillContext[R]
+	bucketUnmarshaler := BucketUnmarshalerFromItem[T](unmarshaler)
 
-	doFill := func(ctx context.Context) {
-		fillCtx := globalFillCtx
-		if fillCtx == nil {
+	var globalFillCtx *fillContext[T, R]
+
+	doFill := func(ctx context.Context, fillCtx *fillContext[T, R]) {
+		if fillCtx.alreadyFilled {
 			return
 		}
 		globalFillCtx = nil
+		fillCtx.alreadyFilled = true
 
 		fillFuncList := make([]fillFunc, 0, len(fillCtx.keys))
 		for _, key := range fillCtx.keys {
-			fillFuncList = append(fillFuncList, filler(ctx, key))
+			fillFuncList = append(fillFuncList, inputFiller(ctx, key))
 		}
 
 		for i, key := range fillCtx.keys {
-			data, err := fillFuncList[i]()
+			var bucket Bucket[T]
 
-			fillResult[key] = fillResponse[R]{
-				data: BucketData[R]{
-					Key:  key,
-					Data: data,
-				},
-				err: err,
+			data, err := fillFuncList[i]()
+			if err == nil {
+				bucket, err = bucketUnmarshaler(data)
+			}
+
+			fillResult[key] = fillResponse[T]{
+				bucket: bucket,
+				err:    err,
 			}
 		}
 	}
 
-	var updaterFiller Filler[R] = func(ctx context.Context, key BucketKey[R]) func() ([]byte, error) {
+	var filler updaterFiller[T, R] = func(ctx context.Context, key BucketKey[R]) func() (Bucket[T], error) {
 		if globalFillCtx == nil {
-			globalFillCtx = &fillContext[R]{
+			globalFillCtx = &fillContext[T, R]{
 				keys:   nil,
 				keySet: map[BucketKey[R]]struct{}{},
 			}
@@ -90,26 +96,25 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 
 		fillCtx.appendFillKey(key, fillResult)
 
-		return func() ([]byte, error) {
-			doFill(ctx)
+		return func() (Bucket[T], error) {
+			doFill(ctx, fillCtx)
 
 			resp := fillResult[key]
-			return resp.data.Data, resp.err
+			return resp.bucket, resp.err
 		}
 	}
 
 	var upsertKeys []BucketKey[R]
 	upsertKeySet := map[BucketKey[R]]struct{}{}
 
-	updateFuncWrap := func(b BucketData[R], deleted bool) {
-		key := b.Key
+	updateFuncWrap := func(key BucketKey[R], b Bucket[T], deleted bool) {
 		_, existed := upsertKeySet[key]
 		if !existed {
 			upsertKeySet[key] = struct{}{}
 			upsertKeys = append(upsertKeys, key)
 		}
-		fillResult[key] = fillResponse[R]{
-			data:    b,
+		fillResult[key] = fillResponse[T]{
+			bucket:  b,
 			deleted: deleted,
 			err:     nil,
 		}
@@ -118,20 +123,30 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 	doUpsert := func() {
 		for _, key := range upsertKeys {
 			result := fillResult[key]
+
+			data, err := result.bucket.Marshal()
+			if err != nil {
+				panic(err)
+			}
+
 			if result.deleted {
-				deleteFunc(result.data.Key)
+				deleteFunc(key)
 			} else {
-				upsertFunc(result.data)
+				upsertFunc(BucketData[R]{
+					Key:  key,
+					Data: data,
+				})
 			}
 		}
+		upsertKeySet = map[BucketKey[R]]struct{}{}
 		upsertKeys = nil
 	}
 
 	return &HashUpdater[T, R, K]{
 		sess:        sess,
 		getKey:      getKey,
-		unmarshaler: BucketUnmarshalerFromItem[T](unmarshaler),
-		filler:      updaterFiller,
+		unmarshaler: bucketUnmarshaler,
+		filler:      filler,
 		upsertFunc:  updateFuncWrap,
 		doUpsert:    doUpsert,
 
@@ -225,7 +240,7 @@ func (u *HashUpdater[T, R, K]) doUpsertBucket(
 	bucket Bucket[T],
 	rootKey R, keyHash uint64, level uint8,
 	deleted bool,
-) error {
+) {
 	bucketKey := BucketKey[R]{
 		RootKey: rootKey,
 		Level:   level,
@@ -233,20 +248,11 @@ func (u *HashUpdater[T, R, K]) doUpsertBucket(
 	}
 
 	if deleted {
-		u.upsertFunc(BucketData[R]{Key: bucketKey}, deleted)
-		return nil
+		u.upsertFunc(bucketKey, Bucket[T]{}, deleted)
+		return
 	}
 
-	newData, err := bucket.Marshal()
-	if err != nil {
-		return err
-	}
-
-	u.upsertFunc(BucketData[R]{
-		Key:  bucketKey,
-		Data: newData,
-	}, deleted)
-	return nil
+	u.upsertFunc(bucketKey, bucket, false)
 }
 
 // UpsertBucket ...
@@ -261,7 +267,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 		levelCalls: 0,
 	}
 
-	var fillerFn func() ([]byte, error)
+	var fillerFn func() (Bucket[T], error)
 	var nextCallFn func()
 
 	doComputeFn := func() {
@@ -275,13 +281,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 	updateCtx.doComputeFn = doComputeFn
 
 	nextCallFn = func() {
-		data, err := fillerFn()
-		if err != nil {
-			updateCtx.err = err
-			return
-		}
-
-		bucket, err := u.unmarshaler(data)
+		bucket, err := fillerFn()
 		if err != nil {
 			updateCtx.err = err
 			return
@@ -296,13 +296,13 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 		updated := updateBucketDataItem(&bucket, value, u.getKey)
 		if updated {
-			updateCtx.err = u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
+			u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
 			return
 		}
 
 		if countNumberOfHashes(&bucket, u.getKey) < u.maxHashesPerBucket {
 			bucket.Items = append(bucket.Items, value)
-			updateCtx.err = u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
+			u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
 			return
 		}
 
@@ -315,15 +315,11 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey, nextLevel)
 
-		err = u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
-		if err != nil {
-			updateCtx.err = err
-			return
-		}
+		u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
 
 		sameHashItems = append(sameHashItems, value)
 
-		updateCtx.err = u.doUpsertBucket(Bucket[T]{
+		u.doUpsertBucket(Bucket[T]{
 			NextLevel:       0,
 			NextLevelPrefix: 0,
 
@@ -352,7 +348,7 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 		levelCalls: 0,
 	}
 
-	var fillerFn func() ([]byte, error)
+	var fillerFn func() (Bucket[T], error)
 	var nextCallFn func()
 
 	var scannedBuckets []scannedBucket[T]
@@ -368,17 +364,12 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 	callCtx.doComputeFn = doComputeFn
 
 	nextCallFn = func() {
-		data, err := fillerFn()
+		bucket, err := fillerFn()
 		if err != nil {
 			callCtx.err = err
 			return
 		}
 
-		bucket, err := u.unmarshaler(data)
-		if err != nil {
-			callCtx.err = err
-			return
-		}
 		scannedBuckets = append(scannedBuckets, scannedBucket[T]{
 			bucket: &bucket,
 			level:  callCtx.level,
@@ -434,10 +425,7 @@ func (u *HashUpdater[T, R, K]) deleteBucketInChain(
 
 		deleted := len(bucket.Items) == 0 && bucketIsZero
 
-		err := u.doUpsertBucket(*bucket, rootKey, keyHash, level, deleted)
-		if err != nil {
-			return err
-		}
+		u.doUpsertBucket(*bucket, rootKey, keyHash, level, deleted)
 
 		if !deleted {
 			return nil
@@ -447,7 +435,7 @@ func (u *HashUpdater[T, R, K]) deleteBucketInChain(
 			return nil
 		}
 
-		prevBucket := scannedBuckets[level-1]
+		prevBucket := scannedBuckets[calls-1]
 		prevBucket.bucket.Bitset.ClearBit(computeBitOffsetForNextLevel(keyHash, level))
 	}
 

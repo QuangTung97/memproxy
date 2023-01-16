@@ -74,13 +74,15 @@ type BucketData[R item.Key] struct {
 	Data []byte
 }
 
+type updaterFiller[T item.Value, R item.Key] func(ctx context.Context, key BucketKey[R]) func() (Bucket[T], error)
+
 // HashUpdater ...
 type HashUpdater[T item.Value, R item.Key, K Key] struct {
 	sess        memproxy.Session
 	getKey      func(v T) K
 	unmarshaler item.Unmarshaler[Bucket[T]]
-	filler      Filler[R]
-	upsertFunc  func(bucket BucketData[R], delete bool)
+	filler      updaterFiller[T, R]
+	upsertFunc  func(key BucketKey[R], bucket Bucket[T], delete bool)
 	doUpsert    func()
 
 	maxHashesPerBucket int
