@@ -78,7 +78,9 @@ type updaterFiller[T item.Value, R item.Key] func(ctx context.Context, key Bucke
 
 // HashUpdater ...
 type HashUpdater[T item.Value, R item.Key, K Key] struct {
-	sess        memproxy.Session
+	sess         memproxy.Session
+	lowerSession memproxy.Session
+
 	getKey      func(v T) K
 	unmarshaler item.Unmarshaler[Bucket[T]]
 	filler      updaterFiller[T, R]

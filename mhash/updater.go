@@ -40,6 +40,37 @@ func (c *fillContext[T, R]) appendFillKey(
 	c.keys = append(c.keys, key)
 }
 
+func (c *fillContext[T, R]) doFill(
+	ctx context.Context,
+	inputFiller Filler[R],
+	bucketUnmarshaler func(data []byte) (Bucket[T], error),
+	fillResult map[BucketKey[R]]fillResponse[T],
+) {
+	if c.alreadyFilled {
+		return
+	}
+	c.alreadyFilled = true
+
+	fillFuncList := make([]fillFunc, 0, len(c.keys))
+	for _, key := range c.keys {
+		fillFuncList = append(fillFuncList, inputFiller(ctx, key))
+	}
+
+	for i, key := range c.keys {
+		var bucket Bucket[T]
+
+		data, err := fillFuncList[i]()
+		if err == nil {
+			bucket, err = bucketUnmarshaler(data)
+		}
+
+		fillResult[key] = fillResponse[T]{
+			bucket: bucket,
+			err:    err,
+		}
+	}
+}
+
 // NewUpdater ...
 //
 //revive:disable-next-line:argument-limit
@@ -59,30 +90,8 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 	var globalFillCtx *fillContext[T, R]
 
 	doFill := func(ctx context.Context, fillCtx *fillContext[T, R]) {
-		if fillCtx.alreadyFilled {
-			return
-		}
 		globalFillCtx = nil
-		fillCtx.alreadyFilled = true
-
-		fillFuncList := make([]fillFunc, 0, len(fillCtx.keys))
-		for _, key := range fillCtx.keys {
-			fillFuncList = append(fillFuncList, inputFiller(ctx, key))
-		}
-
-		for i, key := range fillCtx.keys {
-			var bucket Bucket[T]
-
-			data, err := fillFuncList[i]()
-			if err == nil {
-				bucket, err = bucketUnmarshaler(data)
-			}
-
-			fillResult[key] = fillResponse[T]{
-				bucket: bucket,
-				err:    err,
-			}
-		}
+		fillCtx.doFill(ctx, inputFiller, bucketUnmarshaler, fillResult)
 	}
 
 	var filler updaterFiller[T, R] = func(ctx context.Context, key BucketKey[R]) func() (Bucket[T], error) {
@@ -143,7 +152,9 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 	}
 
 	return &HashUpdater[T, R, K]{
-		sess:        sess,
+		sess:         sess,
+		lowerSession: sess.GetLower(),
+
 		getKey:      getKey,
 		unmarshaler: bucketUnmarshaler,
 		filler:      filler,
@@ -262,51 +273,45 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 	key := u.getKey(value)
 	keyHash := key.Hash()
 
-	updateCtx := callContext{
-		level:      0,
-		levelCalls: 0,
-	}
+	callCtx := callContext{}
 
 	var fillerFn func() (Bucket[T], error)
-	var nextCallFn func()
+	var nextCallFn func() func()
 
-	doComputeFn := func() {
+	doComputeWithUpdate := func(withUpdate bool) {
 		fillerFn = u.filler(ctx, BucketKey[R]{
 			RootKey: rootKey,
-			Level:   updateCtx.level,
-			Hash:    computeHashAtLevel(keyHash, updateCtx.level),
+			Level:   callCtx.level,
+			Hash:    computeHashAtLevel(keyHash, callCtx.level),
 		})
-		u.sess.AddNextCall(nextCallFn)
+		if withUpdate {
+			updateFn := nextCallFn()
+			updateFn()
+		} else {
+			u.sess.AddNextCall(func() {
+				nextCallFn()
+			})
+		}
 	}
-	updateCtx.doComputeFn = doComputeFn
 
-	nextCallFn = func() {
-		bucket, err := fillerFn()
-		if err != nil {
-			updateCtx.err = err
-			return
-		}
+	callCtx.doComputeFn = func() {
+		doComputeWithUpdate(false)
+	}
 
-		continuing := checkContinueOnNextLevel(
-			&bucket, keyHash, &updateCtx,
-		)
-		if !continuing {
-			return
-		}
-
+	nextCallUpdateFn := func(bucket Bucket[T]) {
 		updated := updateBucketDataItem(&bucket, value, u.getKey)
 		if updated {
-			u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
+			u.doUpsertBucket(bucket, rootKey, keyHash, callCtx.level, false)
 			return
 		}
 
 		if countNumberOfHashes(&bucket, u.getKey) < u.maxHashesPerBucket {
 			bucket.Items = append(bucket.Items, value)
-			u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
+			u.doUpsertBucket(bucket, rootKey, keyHash, callCtx.level, false)
 			return
 		}
 
-		nextLevel, prefix := findMaxPrefix[T, K](&bucket, updateCtx.level, u.getKey)
+		nextLevel, prefix := findMaxPrefix[T, K](&bucket, callCtx.level, u.getKey)
 		bucket.NextLevel = nextLevel
 		bucket.NextLevelPrefix = prefix
 
@@ -315,7 +320,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey, nextLevel)
 
-		u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
+		u.doUpsertBucket(bucket, rootKey, keyHash, callCtx.level, false)
 
 		sameHashItems = append(sameHashItems, value)
 
@@ -327,11 +332,38 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 		}, rootKey, keyHash, nextLevel, false)
 	}
 
-	doComputeFn()
+	nextCallFn = func() func() {
+		bucket, err := fillerFn()
+		if err != nil {
+			callCtx.err = err
+			return func() {}
+		}
+
+		continuing := checkContinueOnNextLevel(
+			&bucket, keyHash, &callCtx,
+		)
+		if !continuing {
+			return func() {}
+		}
+
+		return func() {
+			nextCallUpdateFn(bucket)
+		}
+	}
+
+	callCtx.doComputeFn()
+
+	u.lowerSession.AddNextCall(func() {
+		callCtx = callContext{}
+		callCtx.doComputeFn = func() {
+			doComputeWithUpdate(true)
+		}
+		callCtx.doComputeFn()
+	})
 
 	return func() error {
 		u.execute()
-		return updateCtx.err
+		return callCtx.err
 	}
 }
 
@@ -343,31 +375,37 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 ) func() error {
 	keyHash := key.Hash()
 
-	callCtx := callContext{
-		level:      0,
-		levelCalls: 0,
-	}
-
-	var fillerFn func() (Bucket[T], error)
-	var nextCallFn func()
-
+	callCtx := callContext{}
 	var scannedBuckets []scannedBucket[T]
 
-	doComputeFn := func() {
+	var fillerFn func() (Bucket[T], error)
+	var nextCallFn func() func()
+
+	doComputeWithUpdate := func(withUpdate bool) {
 		fillerFn = u.filler(ctx, BucketKey[R]{
 			RootKey: rootKey,
 			Level:   callCtx.level,
 			Hash:    computeHashAtLevel(keyHash, callCtx.level),
 		})
-		u.sess.AddNextCall(nextCallFn)
+		if withUpdate {
+			updateFn := nextCallFn()
+			updateFn()
+		} else {
+			u.sess.AddNextCall(func() {
+				nextCallFn()
+			})
+		}
 	}
-	callCtx.doComputeFn = doComputeFn
 
-	nextCallFn = func() {
+	callCtx.doComputeFn = func() {
+		doComputeWithUpdate(false)
+	}
+
+	nextCallFn = func() func() {
 		bucket, err := fillerFn()
 		if err != nil {
 			callCtx.err = err
-			return
+			return func() {}
 		}
 
 		scannedBuckets = append(scannedBuckets, scannedBucket[T]{
@@ -377,23 +415,36 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 
 		continuing := checkContinueOnNextLevel(&bucket, keyHash, &callCtx)
 		if !continuing {
-			return
+			return func() {}
 		}
 
-		prevLen := len(bucket.Items)
+		return func() {
+			prevLen := len(bucket.Items)
 
-		bucket.Items = removeItemInList[T](bucket.Items, func(e T) bool {
-			return u.getKey(e) == key
-		})
+			bucket.Items = removeItemInList[T](bucket.Items, func(e T) bool {
+				return u.getKey(e) == key
+			})
 
-		if prevLen == len(bucket.Items) {
-			return
+			if prevLen == len(bucket.Items) {
+				return
+			}
+
+			callCtx.err = u.deleteBucketInChain(scannedBuckets, rootKey, keyHash)
 		}
-
-		callCtx.err = u.deleteBucketInChain(scannedBuckets, rootKey, keyHash)
 	}
 
-	doComputeFn()
+	callCtx.doComputeFn()
+
+	u.lowerSession.AddNextCall(func() {
+		// clear state
+		callCtx = callContext{}
+		scannedBuckets = scannedBuckets[:0]
+
+		callCtx.doComputeFn = func() {
+			doComputeWithUpdate(true)
+		}
+		callCtx.doComputeFn()
+	})
 
 	return func() error {
 		u.execute()
@@ -443,7 +494,7 @@ func (u *HashUpdater[T, R, K]) deleteBucketInChain(
 }
 
 func (u *HashUpdater[T, R, K]) execute() {
-	u.sess.Execute()
+	u.lowerSession.Execute()
 	u.doUpsert()
 }
 
