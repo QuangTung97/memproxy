@@ -283,6 +283,23 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 			},
 		}, u.upsertBuckets)
 
+		b1, err := BucketUnmarshalerFromItem(unmarshalCustomerUsage)(u.upsertBuckets[0].Data)
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Bucket[customerUsage]{
+			NextLevel:       1,
+			NextLevelPrefix: 0x0,
+			Items:           []customerUsage{usage2},
+			Bitset:          newBitSet(0x71),
+		}, b1)
+
+		b2, err := BucketUnmarshalerFromItem(unmarshalCustomerUsage)(u.upsertBuckets[1].Data)
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Bucket[customerUsage]{
+			NextLevel:       0,
+			NextLevelPrefix: 0x0,
+			Items:           []customerUsage{usage1, usage3},
+		}, b2)
+
 		assert.Equal(t, []customerUsageRootKey{rootKey}, u.fillerRootKeys)
 		assert.Equal(t, []uint64{0x00}, u.fillerHashList)
 	})
@@ -448,6 +465,77 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 			0x717273 << (64 - 8*3),
 			0x71727374 << (64 - 8*4),
 		}, u.fillerHashList)
+	})
+
+	t.Run("insert-exceed-limit--create-child--with-prefix", func(t *testing.T) {
+		u := newUpdaterTest(2)
+
+		newUsage := func(i int) customerUsage {
+			return customerUsage{
+				Tenant:     "TENANT",
+				CampaignID: 70,
+
+				Phone:    "098700011" + fmt.Sprint(i),
+				TermCode: "TERM0" + fmt.Sprint(i),
+				Hash:     uint64(0x524460+i) << (64 - 3*8),
+
+				Usage: int64(10 + i),
+				Age:   int64(20 + i),
+			}
+		}
+
+		usage1 := newUsage(1)
+		usage2 := newUsage(2)
+		usage3 := newUsage(3)
+
+		u.stubFillMulti(
+			mustMarshalBucket(0, 0x0, Bucket[customerUsage]{
+				Items: []customerUsage{usage1, usage2},
+			}),
+		)
+
+		rootKey := usage3.getRootKey()
+
+		fn := u.updater.UpsertBucket(newContext(), rootKey, usage3)
+
+		err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, []BucketData[customerUsageRootKey]{
+			{
+				Key: BucketKey[customerUsageRootKey]{
+					RootKey: rootKey,
+					Hash:    0x00,
+					Level:   0,
+				},
+				Data: mustMarshalBucket(3, 0x5244, Bucket[customerUsage]{
+					Items:  []customerUsage{usage1, usage2},
+					Bitset: newBitSet(0x63),
+				}),
+			},
+			{
+				Key: BucketKey[customerUsageRootKey]{
+					RootKey: rootKey,
+					Hash:    0x524463 << (64 - 3*8),
+					Level:   3,
+				},
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
+					Items: []customerUsage{usage3},
+				}),
+			},
+		}, u.upsertBuckets)
+
+		b1, err := BucketUnmarshalerFromItem(unmarshalCustomerUsage)(u.upsertBuckets[0].Data)
+		assert.Equal(t, nil, err)
+
+		assert.Equal(t, Bucket[customerUsage]{
+			NextLevel:       3,
+			NextLevelPrefix: 0x5244 << (64 - 2*8),
+			Items:           []customerUsage{usage1, usage2},
+			Bitset:          newBitSet(0x63),
+		}, b1)
+
+		assert.Equal(t, []customerUsageRootKey{rootKey}, u.fillerRootKeys)
+		assert.Equal(t, []uint64{0x00}, u.fillerHashList)
 	})
 }
 
@@ -1196,5 +1284,87 @@ func TestRemoveItemInList(t *testing.T) {
 			return e == 5
 		})
 		assert.Equal(t, []int{3, 4, 1, 7}, result)
+	})
+}
+
+func TestFindMaxPrefix(t *testing.T) {
+	t.Run("from-level-zero", func(t *testing.T) {
+		b := &Bucket[customerUsage]{
+			Items: []customerUsage{
+				{
+					Hash: 0x61 << (64 - 8),
+				},
+				{
+					Hash: 0x62 << (64 - 8),
+				},
+			},
+		}
+		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 0, customerUsage.getKey)
+		assert.Equal(t, uint8(1), nextLevel)
+		assert.Equal(t, uint64(0x0), prefix)
+	})
+
+	t.Run("from-level-zero--not-match-at-level-4", func(t *testing.T) {
+		b := &Bucket[customerUsage]{
+			Items: []customerUsage{
+				{
+					Hash: 0x22334461 << (64 - 4*8),
+				},
+				{
+					Hash: 0x22334462 << (64 - 4*8),
+				},
+			},
+		}
+		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 0, customerUsage.getKey)
+		assert.Equal(t, uint8(4), nextLevel)
+		assert.Equal(t, uint64(0x223344<<(64-3*8)), prefix)
+	})
+
+	t.Run("from-level-two--not-match-at-level-4", func(t *testing.T) {
+		b := &Bucket[customerUsage]{
+			Items: []customerUsage{
+				{
+					Hash: 0x22334461 << (64 - 4*8),
+				},
+				{
+					Hash: 0x22334462 << (64 - 4*8),
+				},
+			},
+		}
+		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 2, customerUsage.getKey)
+		assert.Equal(t, uint8(4), nextLevel)
+		assert.Equal(t, uint64(0x223344<<(64-3*8)), prefix)
+	})
+
+	t.Run("not-match-right", func(t *testing.T) {
+		b := &Bucket[customerUsage]{
+			Items: []customerUsage{
+				{
+					Hash: 0x1122334455667788,
+				},
+				{
+					Hash: 0x1122334455667799,
+				},
+			},
+		}
+		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 2, customerUsage.getKey)
+		assert.Equal(t, uint8(8), nextLevel)
+		assert.Equal(t, uint64(0x1122334455667700), prefix)
+	})
+
+	t.Run("match-all-the-way", func(t *testing.T) {
+		b := &Bucket[customerUsage]{
+			Items: []customerUsage{
+				{
+					Hash: 0x1122334455667788,
+				},
+				{
+					Hash: 0x1122334455667788,
+				},
+			},
+		}
+		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 2, customerUsage.getKey)
+		assert.Equal(t, uint8(9), nextLevel)
+		assert.Equal(t, uint64(0x1122334455667788), prefix)
 	})
 }

@@ -139,6 +139,26 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 	}
 }
 
+func findMaxPrefix[T item.Value, K Key](
+	b *Bucket[T], currentLevel uint8, getKey func(T) K,
+) (nextLevel uint8, prefix uint64) {
+	var level uint8
+	var mask, first uint64
+
+	for level = currentLevel + 1; level < 9; level++ {
+		mask = computeMaskAtLevel(level)
+		first = getKey(b.Items[0]).Hash() & mask
+
+		for _, it := range b.Items[1:] {
+			hash := getKey(it).Hash() & mask
+			if first != hash {
+				return level, first & (mask << 8)
+			}
+		}
+	}
+	return level, first
+}
+
 func countNumberOfHashes[T item.Value, K Key](
 	b *Bucket[T], getKey func(T) K,
 ) int {
@@ -252,6 +272,27 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 		u.sess.AddNextCall(nextCallFn)
 	}
 
+	checkNextLevel := func(bucket *Bucket[T]) (continuing bool) {
+		if bucket.NextLevel == 0 {
+			return true
+		}
+
+		offset := computeBitOffsetForNextLevel(keyHash, bucket.NextLevel)
+		if !bucket.Bitset.GetBit(offset) {
+			return true
+		}
+
+		level = bucket.NextLevel
+
+		levelCalls++
+		if levelCalls >= maxDeepLevels {
+			resultErr = ErrHashTooDeep
+			return false
+		}
+		doComputeFn()
+		return false
+	}
+
 	nextCallFn = func() {
 		data, err := fillerFn()
 		if err != nil {
@@ -265,16 +306,8 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 			return
 		}
 
-		offset := computeBitOffsetAtLevel(keyHash, level)
-		if bucket.NextLevel > 0 && bucket.Bitset.GetBit(offset) {
-			level = bucket.NextLevel
-
-			levelCalls++
-			if levelCalls >= maxDeepLevels {
-				resultErr = ErrHashTooDeep
-				return
-			}
-			doComputeFn()
+		continuing := checkNextLevel(&bucket)
+		if !continuing {
 			return
 		}
 
@@ -290,10 +323,14 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 			return
 		}
 
-		bucket.Bitset.SetBit(offset)
-		bucket.NextLevel = level + 1
+		nextLevel, prefix := findMaxPrefix[T, K](&bucket, level, u.getKey)
+		bucket.NextLevel = nextLevel
+		bucket.NextLevelPrefix = prefix
 
-		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey, level+1)
+		offset := computeBitOffsetForNextLevel(keyHash, nextLevel)
+		bucket.Bitset.SetBit(offset)
+
+		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey, nextLevel)
 
 		err = u.doUpsertBucket(bucket, rootKey, keyHash, level, false)
 		if err != nil {
@@ -308,7 +345,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 			NextLevelPrefix: 0,
 
 			Items: sameHashItems,
-		}, rootKey, keyHash, level+1, false)
+		}, rootKey, keyHash, nextLevel, false)
 	}
 
 	doComputeFn()

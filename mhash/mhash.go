@@ -125,12 +125,21 @@ type getResult[T any] struct {
 	err  error
 }
 
+func computeMaskAtLevel(level uint8) uint64 {
+	return math.MaxUint64 << (64 - 8*level)
+}
+
 func computeHashAtLevel(hash uint64, level uint8) uint64 {
-	return hash & (math.MaxUint64 << (64 - 8*level))
+	return hash & computeMaskAtLevel(level)
 }
 
 func computeBitOffsetAtLevel(hash uint64, currentHashLen uint8) int {
 	offset := (hash >> (64 - 8 - currentHashLen*8)) & 0xff
+	return int(offset)
+}
+
+func computeBitOffsetForNextLevel(hash uint64, nextLevel uint8) int {
+	offset := (hash >> (64 - nextLevel*8)) & 0xff
 	return int(offset)
 }
 
