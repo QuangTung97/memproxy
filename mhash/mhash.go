@@ -13,7 +13,7 @@ import (
 // ErrHashTooDeep when too many levels to go to
 var ErrHashTooDeep = errors.New("mhash: hash go too deep")
 
-const maxDeepLevels = 5
+const maxDeepLevels = int(5)
 
 // Null ...
 type Null[T any] struct {
@@ -30,6 +30,9 @@ type BitSet [bitSetBytes]byte
 
 // Bucket ...
 type Bucket[T item.Value] struct {
+	NextLevel       uint8
+	NextLevelPrefix uint64
+
 	Items  []T
 	Bitset BitSet
 }
@@ -37,7 +40,7 @@ type Bucket[T item.Value] struct {
 // BucketKey ...
 type BucketKey[R item.Key] struct {
 	RootKey R
-	Level   int // from 0
+	Level   uint8 // from 0
 	Hash    uint64
 }
 
@@ -122,11 +125,11 @@ type getResult[T any] struct {
 	err  error
 }
 
-func computeHashAtLevel(hash uint64, hashLen int) uint64 {
-	return hash & (math.MaxUint64 << (64 - 8*hashLen))
+func computeHashAtLevel(hash uint64, level uint8) uint64 {
+	return hash & (math.MaxUint64 << (64 - 8*level))
 }
 
-func computeBitOffsetAtLevel(hash uint64, currentHashLen int) int {
+func computeBitOffsetAtLevel(hash uint64, currentHashLen uint8) int {
 	offset := (hash >> (64 - 8 - currentHashLen*8)) & 0xff
 	return int(offset)
 }
@@ -137,13 +140,15 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 
 	var rootBucketFn func() (Bucket[T], error)
 	var nextCallFn func()
-	hashLen := 0
+
+	level := uint8(0)
+	levelCalls := 0
 
 	doGetFn := func() {
 		rootBucketFn = h.bucketItem.Get(ctx, BucketKey[R]{
 			RootKey: rootKey,
-			Level:   hashLen,
-			Hash:    computeHashAtLevel(keyHash, hashLen),
+			Level:   level,
+			Hash:    computeHashAtLevel(keyHash, level),
 		})
 		h.sess.AddNextCall(nextCallFn)
 	}
@@ -156,10 +161,11 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 			return
 		}
 
-		bitOffset := computeBitOffsetAtLevel(keyHash, hashLen)
+		bitOffset := computeBitOffsetAtLevel(keyHash, level)
 		if bucket.Bitset.GetBit(bitOffset) {
-			hashLen++
-			if hashLen >= maxDeepLevels {
+			level = bucket.NextLevel
+			levelCalls++
+			if levelCalls >= maxDeepLevels {
 				result.err = ErrHashTooDeep
 				return
 			}

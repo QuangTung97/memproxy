@@ -13,7 +13,7 @@ type updaterTest struct {
 	fillerFunc     Filler[customerUsageRootKey]
 	fillerRootKeys []customerUsageRootKey
 	fillerHashList []uint64
-	fillerLevels   []int
+	fillerLevels   []uint8
 
 	upsertBuckets []BucketData[customerUsageRootKey]
 	deleteBuckets []BucketKey[customerUsageRootKey]
@@ -75,7 +75,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 
 		const keyHash = 0x123422 << (64 - 3*8)
 
-		data := mustMarshalBucket(Bucket[customerUsage]{
+		data := mustMarshalBucket(0, 0, Bucket[customerUsage]{
 			Items: nil,
 		})
 		u.stubFill(data, nil)
@@ -104,7 +104,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 					Hash:    0x00,
 					Level:   0,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items: []customerUsage{usage},
 				}),
 			},
@@ -131,7 +131,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 			Age:   22,
 		}
 
-		data := mustMarshalBucket(Bucket[customerUsage]{
+		data := mustMarshalBucket(0, 0, Bucket[customerUsage]{
 			Items: []customerUsage{usage},
 		})
 		u.stubFill(data, nil)
@@ -151,7 +151,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 					Hash:    0x00,
 					Level:   0,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0x0, Bucket[customerUsage]{
 					Items: []customerUsage{usage},
 				}),
 			},
@@ -183,11 +183,8 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 		usage3 := newUsage(3)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0x0, Bucket[customerUsage]{
 				Items: []customerUsage{usage1, usage2},
-			}),
-			mustMarshalBucket(Bucket[customerUsage]{
-				Items: nil,
 			}),
 		)
 
@@ -204,7 +201,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 					Hash:    0x00,
 					Level:   0,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 					Items:  []customerUsage{usage1, usage2},
 					Bitset: newBitSet(0x63),
 				}),
@@ -215,7 +212,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 					Hash:    0x63 << (64 - 8),
 					Level:   1,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items: []customerUsage{usage3},
 				}),
 			},
@@ -251,11 +248,8 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 		usage3.Hash = 0x7173 << (64 - 2*8)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: []customerUsage{usage1, usage2},
-			}),
-			mustMarshalBucket(Bucket[customerUsage]{
-				Items: nil,
 			}),
 		)
 
@@ -272,7 +266,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 					Hash:    0x00,
 					Level:   0,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 					Items:  []customerUsage{usage2},
 					Bitset: newBitSet(0x71),
 				}),
@@ -283,7 +277,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 					Hash:    0x71 << (64 - 8),
 					Level:   1,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items: []customerUsage{usage1, usage3},
 				}),
 			},
@@ -317,11 +311,11 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 		usage2.Hash = usage3.Hash
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 				Items:  []customerUsage{usage1},
 				Bitset: newBitSet(0x63),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: []customerUsage{usage2},
 			}),
 		)
@@ -339,7 +333,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 					Hash:    0x63 << (64 - 8),
 					Level:   1,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items: []customerUsage{usage2, usage3},
 				}),
 			},
@@ -373,7 +367,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 		usage2.Hash = usage3.Hash
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: []customerUsage{usage1, usage2},
 			}),
 		)
@@ -391,7 +385,7 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 					Hash:    0x00,
 					Level:   0,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items: []customerUsage{usage1, usage2, usage3},
 				}),
 			},
@@ -421,19 +415,19 @@ func TestUpdater_UpdateBucket(t *testing.T) {
 		usage1 := newUsage(1)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(1, 0, Bucket[customerUsage]{
 				Bitset: newBitSet(0x71),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(2, 0x71, Bucket[customerUsage]{
 				Bitset: newBitSet(0x72),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(3, 0x7172, Bucket[customerUsage]{
 				Bitset: newBitSet(0x73),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(4, 0x717273, Bucket[customerUsage]{
 				Bitset: newBitSet(0x74),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(5, 0x71727374, Bucket[customerUsage]{
 				Bitset: newBitSet(0x75),
 			}),
 		)
@@ -480,7 +474,7 @@ func TestUpdater_UpdaterConcurrent(t *testing.T) {
 		usage3 := newUsage(3)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: nil,
 			}),
 		)
@@ -509,7 +503,7 @@ func TestUpdater_UpdaterConcurrent(t *testing.T) {
 					Hash:    0x00,
 					Level:   0,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 					Items:  []customerUsage{usage1, usage2},
 					Bitset: newBitSet(0x63),
 				}),
@@ -520,7 +514,7 @@ func TestUpdater_UpdaterConcurrent(t *testing.T) {
 					Hash:    0x63 << (64 - 8),
 					Level:   1,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items: []customerUsage{usage3},
 				}),
 			},
@@ -557,7 +551,7 @@ func TestUpdater_UpdaterConcurrent(t *testing.T) {
 		usage4.Hash = 0x7173 << (64 - 2*8)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: []customerUsage{usage1, usage2},
 			}),
 		)
@@ -582,7 +576,7 @@ func TestUpdater_UpdaterConcurrent(t *testing.T) {
 					Hash:    0x00,
 					Level:   0,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 					Items:  []customerUsage{usage1, usage2},
 					Bitset: newBitSet(0x71),
 				}),
@@ -593,7 +587,7 @@ func TestUpdater_UpdaterConcurrent(t *testing.T) {
 					Hash:    0x71 << (64 - 8),
 					Level:   1,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items: []customerUsage{usage3, usage4},
 				}),
 			},
@@ -625,7 +619,7 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		usage1 := newUsage(1)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: []customerUsage{usage1},
 			}),
 		)
@@ -668,7 +662,7 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		usage1 := newUsage(1)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: nil,
 			}),
 		)
@@ -705,7 +699,7 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		usage1 := newUsage(1)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 				Items:  []customerUsage{usage1},
 				Bitset: newBitSet(0x55),
 			}),
@@ -723,7 +717,7 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 					Hash:    0x00,
 					Level:   0,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 					Bitset: newBitSet(0x55),
 				}),
 			},
@@ -755,7 +749,7 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		usage2 := newUsage(2)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: []customerUsage{usage1, usage2},
 			}),
 		)
@@ -772,7 +766,7 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 					Hash:    0x00,
 					Level:   0,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items: []customerUsage{
 						usage2,
 					},
@@ -805,11 +799,11 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		usage2 := newUsage(2)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 				Items:  nil,
 				Bitset: newBitSet(0x67),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: []customerUsage{usage1, usage2},
 			}),
 		)
@@ -826,7 +820,7 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 					Hash:    0x67 << (64 - 8),
 					Level:   1,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items: []customerUsage{
 						usage2,
 					},
@@ -858,19 +852,19 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		usage1 := newUsage(1)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 				Bitset: newBitSet(0x71),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(2, 0x71, Bucket[customerUsage]{
 				Bitset: newBitSet(0x72),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(3, 0x7172, Bucket[customerUsage]{
 				Bitset: newBitSet(0x73),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(4, 0x717273, Bucket[customerUsage]{
 				Bitset: newBitSet(0x74),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(5, 0x71727374, Bucket[customerUsage]{
 				Bitset: newBitSet(0x75),
 			}),
 		)
@@ -919,11 +913,11 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		usage2.Hash = 0x88 << (64 - 8)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 				Items:  []customerUsage{usage2},
 				Bitset: newBitSet(0x71),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: []customerUsage{
 					usage1,
 				},
@@ -941,9 +935,80 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 					Hash:    0x00,
 					Level:   0,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items:  []customerUsage{usage2},
 					Bitset: newBitSet(),
+				}),
+			},
+		}, u.upsertBuckets)
+
+		assert.Equal(t, []BucketKey[customerUsageRootKey]{
+			{
+				RootKey: usage1.getRootKey(),
+				Hash:    0x71 << (64 - 8),
+				Level:   1,
+			},
+		}, u.deleteBuckets)
+
+		// Check Filler Calls
+		assert.Equal(t, []customerUsageRootKey{
+			usage1.getRootKey(),
+			usage1.getRootKey(),
+		}, u.fillerRootKeys)
+		assert.Equal(t, []uint64{
+			0x00,
+			0x71 << (64 - 1*8),
+		}, u.fillerHashList)
+	})
+
+	t.Run("delete-level-two-empty--but-have-sibling-first-level-not-clear", func(t *testing.T) {
+		u := newUpdaterTest(2)
+
+		newUsage := func(i int) customerUsage {
+			return customerUsage{
+				Tenant:     "TENANT",
+				CampaignID: 70,
+
+				Phone:    "098700011" + fmt.Sprint(i),
+				TermCode: "TERM0" + fmt.Sprint(i),
+				Hash:     uint64(0x7172737475) << (64 - 5*8),
+
+				Usage: int64(10 + i),
+				Age:   int64(20 + i),
+			}
+		}
+		usage1 := newUsage(1)
+		usage2 := newUsage(2)
+		usage2.Hash = 0x88 << (64 - 8)
+
+		u.stubFillMulti(
+			mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
+				Items:  []customerUsage{usage2},
+				Bitset: newBitSet(0x71, 0x72),
+			}),
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
+				Items: []customerUsage{
+					usage1,
+				},
+			}),
+		)
+
+		fn := u.updater.DeleteBucket(newContext(), usage1.getRootKey(), usage1.getKey())
+
+		err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, []BucketData[customerUsageRootKey]{
+			{
+				Key: BucketKey[customerUsageRootKey]{
+					RootKey: usage1.getRootKey(),
+					Hash:    0x00,
+					Level:   0,
+				},
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
+					NextLevel:       1,
+					NextLevelPrefix: 0x0,
+					Items:           []customerUsage{usage2},
+					Bitset:          newBitSet(0x72),
 				}),
 			},
 		}, u.upsertBuckets)
@@ -986,13 +1051,13 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		usage1 := newUsage(1)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 				Bitset: newBitSet(0x71),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(2, 0x71, Bucket[customerUsage]{
 				Bitset: newBitSet(0x72),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: []customerUsage{
 					usage1,
 				},
@@ -1057,14 +1122,14 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 		usage2.Hash = 0x88 << (64 - 8)
 
 		u.stubFillMulti(
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 				Bitset: newBitSet(0x71),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(2, 0x71, Bucket[customerUsage]{
 				Items:  []customerUsage{usage2},
 				Bitset: newBitSet(0x72),
 			}),
-			mustMarshalBucket(Bucket[customerUsage]{
+			mustMarshalBucket(0, 0, Bucket[customerUsage]{
 				Items: []customerUsage{
 					usage1,
 				},
@@ -1082,7 +1147,7 @@ func TestUpdater_DeleteBucket(t *testing.T) {
 					Hash:    0x71 << (64 - 8),
 					Level:   1,
 				},
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0, Bucket[customerUsage]{
 					Items:  []customerUsage{usage2},
 					Bitset: newBitSet(),
 				}),

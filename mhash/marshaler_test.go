@@ -19,6 +19,9 @@ func (u userTest) Marshal() ([]byte, error) {
 
 func TestBucketMarshaler(t *testing.T) {
 	origin := Bucket[userTest]{
+		NextLevel:       3,
+		NextLevelPrefix: 0x7788 << (64 - 2*8),
+
 		Items: []userTest{
 			{
 				ID:   21,

@@ -10,6 +10,12 @@ import (
 func (b Bucket[T]) Marshal() ([]byte, error) {
 	var buf bytes.Buffer
 
+	_ = buf.WriteByte(b.NextLevel)
+
+	var prefix [8]byte
+	binary.LittleEndian.PutUint64(prefix[:], b.NextLevelPrefix)
+	_, _ = buf.Write(prefix[:])
+
 	var itemLenBytes [binary.MaxVarintLen64]byte
 	n := binary.PutUvarint(itemLenBytes[:], uint64(len(b.Items)))
 
@@ -41,6 +47,14 @@ func BucketUnmarshalerFromItem[T item.Value](unmarshaler item.Unmarshaler[T]) it
 			return Bucket[T]{}, nil
 		}
 
+		nextLevel := data[0]
+		data = data[1:]
+
+		// TODO Check data len
+
+		nextLevelPrefix := binary.LittleEndian.Uint64(data)
+		data = data[8:]
+
 		itemLen, n := binary.Uvarint(data)
 		// TODO check n
 		data = data[n:]
@@ -66,6 +80,9 @@ func BucketUnmarshalerFromItem[T item.Value](unmarshaler item.Unmarshaler[T]) it
 		copy(bitSet[:], data)
 
 		return Bucket[T]{
+			NextLevel:       nextLevel,
+			NextLevelPrefix: nextLevelPrefix,
+
 			Items:  items,
 			Bitset: bitSet,
 		}, nil

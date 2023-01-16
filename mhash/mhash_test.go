@@ -164,7 +164,12 @@ func newBitSet(posList ...int) BitSet {
 	return b
 }
 
-func mustMarshalBucket(b Bucket[customerUsage]) []byte {
+func mustMarshalBucket(nextLevel uint8, prefix uint64, b Bucket[customerUsage]) []byte {
+	if nextLevel > 0 {
+		b.NextLevel = nextLevel
+		b.NextLevelPrefix = prefix << (64 - (nextLevel-1)*8)
+	}
+
 	data, err := b.Marshal()
 	if err != nil {
 		panic(err)
@@ -172,11 +177,11 @@ func mustMarshalBucket(b Bucket[customerUsage]) []byte {
 	return data
 }
 
-func newLeaseResp(pos int) memproxy.LeaseGetResponse {
+func newLeaseResp(nextLevel uint8, prefix uint64, pos int) memproxy.LeaseGetResponse {
 	return memproxy.LeaseGetResponse{
 		Status: memproxy.LeaseGetStatusFound,
 		CAS:    5501,
-		Data: mustMarshalBucket(Bucket[customerUsage]{
+		Data: mustMarshalBucket(nextLevel, prefix, Bucket[customerUsage]{
 			Items:  []customerUsage{},
 			Bitset: newBitSet(pos),
 		}),
@@ -203,7 +208,7 @@ func TestHash(t *testing.T) {
 		h.stubLeaseGet(memproxy.LeaseGetResponse{
 			Status: memproxy.LeaseGetStatusFound,
 			CAS:    5566,
-			Data: mustMarshalBucket(Bucket[customerUsage]{
+			Data: mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 				Items: []customerUsage{
 					usage,
 				},
@@ -242,7 +247,7 @@ func TestHash(t *testing.T) {
 		h.stubLeaseGet(memproxy.LeaseGetResponse{
 			Status: memproxy.LeaseGetStatusFound,
 			CAS:    5566,
-			Data: mustMarshalBucket(Bucket[customerUsage]{
+			Data: mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 				Items: []customerUsage{},
 			}),
 		}, nil)
@@ -288,7 +293,7 @@ func TestHash(t *testing.T) {
 			memproxy.LeaseGetResponse{
 				Status: memproxy.LeaseGetStatusFound,
 				CAS:    5566,
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(1, 0x0, Bucket[customerUsage]{
 					Items:  []customerUsage{},
 					Bitset: newBitSet(0x22),
 				}),
@@ -296,7 +301,7 @@ func TestHash(t *testing.T) {
 			memproxy.LeaseGetResponse{
 				Status: memproxy.LeaseGetStatusFound,
 				CAS:    5566,
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0x0, Bucket[customerUsage]{
 					Items: []customerUsage{
 						usage,
 					},
@@ -346,13 +351,13 @@ func TestHash(t *testing.T) {
 		}
 
 		h.stubLeaseGetMulti(
-			newLeaseResp(0x16),
-			newLeaseResp(0x27),
-			newLeaseResp(0x38),
+			newLeaseResp(1, 0, 0x16),
+			newLeaseResp(2, 0x16, 0x27),
+			newLeaseResp(3, 0x1627, 0x38),
 			memproxy.LeaseGetResponse{
 				Status: memproxy.LeaseGetStatusFound,
 				CAS:    5566,
-				Data: mustMarshalBucket(Bucket[customerUsage]{
+				Data: mustMarshalBucket(0, 0x0, Bucket[customerUsage]{
 					Items: []customerUsage{
 						usage,
 					},
@@ -393,11 +398,11 @@ func TestHash(t *testing.T) {
 		const keyHash = 0x1627384950 << (64 - 5*8)
 
 		h.stubLeaseGetMulti(
-			newLeaseResp(0x16),
-			newLeaseResp(0x27),
-			newLeaseResp(0x38),
-			newLeaseResp(0x49),
-			newLeaseResp(0x50),
+			newLeaseResp(1, 0, 0x16),
+			newLeaseResp(2, 0x16, 0x27),
+			newLeaseResp(3, 0x1627, 0x38),
+			newLeaseResp(4, 0x162738, 0x49),
+			newLeaseResp(5, 0x16273849, 0x50),
 		)
 
 		fn := h.hash.Get(newContext(),
@@ -476,7 +481,7 @@ func TestHash(t *testing.T) {
 			CAS:    cas,
 		}, nil)
 
-		data := mustMarshalBucket(Bucket[customerUsage]{
+		data := mustMarshalBucket(0, 0x0, Bucket[customerUsage]{
 			Items: []customerUsage{
 				usage,
 			},
@@ -589,15 +594,15 @@ func TestHash(t *testing.T) {
 		}
 
 		h.stubLeaseGetMulti(
-			newLeaseResp(0x12),
-			newLeaseResp(0x23),
+			newLeaseResp(1, 0, 0x12),
+			newLeaseResp(2, 0x12, 0x23),
 			memproxy.LeaseGetResponse{
 				Status: memproxy.LeaseGetStatusLeaseGranted,
 				CAS:    cas,
 			},
 		)
 
-		data := mustMarshalBucket(Bucket[customerUsage]{
+		data := mustMarshalBucket(0, 0, Bucket[customerUsage]{
 			Items: []customerUsage{
 				usage,
 			},
@@ -661,12 +666,12 @@ func TestHash_Concurrent(t *testing.T) {
 			{
 				Status: memproxy.LeaseGetStatusFound,
 				CAS:    cas1,
-				Data:   mustMarshalBucket(Bucket[customerUsage]{}),
+				Data:   mustMarshalBucket(0, 0, Bucket[customerUsage]{}),
 			},
 			{
 				Status: memproxy.LeaseGetStatusFound,
 				CAS:    cas2,
-				Data:   mustMarshalBucket(Bucket[customerUsage]{}),
+				Data:   mustMarshalBucket(0, 0, Bucket[customerUsage]{}),
 			},
 		}
 
@@ -780,7 +785,7 @@ func TestHash_Concurrent(t *testing.T) {
 			callOrders = append(callOrders, "filler-get:"+key.String())
 			return func() ([]byte, error) {
 				callOrders = append(callOrders, "filler-func:"+key.String())
-				return mustMarshalBucket(Bucket[customerUsage]{}), nil
+				return mustMarshalBucket(0, 0, Bucket[customerUsage]{}), nil
 			}
 		}
 
