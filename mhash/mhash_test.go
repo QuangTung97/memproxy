@@ -646,3 +646,194 @@ func TestHash(t *testing.T) {
 		assert.Equal(t, []uint64{0x1223 << (64 - 8*2)}, h.fillerHashList)
 	})
 }
+
+func TestHash_Concurrent(t *testing.T) {
+	t.Run("lease-get-found--pipe-do-get-multi", func(t *testing.T) {
+		h := newHashTest()
+
+		const cas1 = 7801
+		const cas2 = 7802
+
+		const keyHash1 = 0x71 << (64 - 8)
+		const keyHash2 = 0x72 << (64 - 8)
+
+		respList := []memproxy.LeaseGetResponse{
+			{
+				Status: memproxy.LeaseGetStatusFound,
+				CAS:    cas1,
+				Data:   mustMarshalBucket(Bucket[customerUsage]{}),
+			},
+			{
+				Status: memproxy.LeaseGetStatusFound,
+				CAS:    cas2,
+				Data:   mustMarshalBucket(Bucket[customerUsage]{}),
+			},
+		}
+
+		var callOrders []string
+
+		h.pipe.LeaseGetFunc = func(
+			key string, options memproxy.LeaseGetOptions,
+		) func() (memproxy.LeaseGetResponse, error) {
+			index := len(h.pipe.LeaseGetCalls()) - 1
+			callOrders = append(callOrders, "lease-get")
+			return func() (memproxy.LeaseGetResponse, error) {
+				callOrders = append(callOrders, "lease-func")
+				return respList[index], nil
+			}
+		}
+
+		fn1 := h.hash.Get(newContext(),
+			customerUsageRootKey{
+				Tenant:     "TENANT01",
+				CampaignID: 41,
+			}, customerUsageKey{
+				Phone:    "0987000111",
+				TermCode: "TERM01",
+				hash:     keyHash1,
+			},
+		)
+
+		fn2 := h.hash.Get(newContext(),
+			customerUsageRootKey{
+				Tenant:     "TENANT02",
+				CampaignID: 42,
+			}, customerUsageKey{
+				Phone:    "0987000112",
+				TermCode: "TERM02",
+				hash:     keyHash2,
+			},
+		)
+
+		assert.Equal(t, []string{
+			"lease-get",
+			"lease-get",
+		}, callOrders)
+
+		resp, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Null[customerUsage]{}, resp)
+
+		resp, err = fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Null[customerUsage]{}, resp)
+
+		assert.Equal(t, []string{
+			"lease-get",
+			"lease-get",
+			"lease-func",
+			"lease-func",
+		}, callOrders)
+
+		getCalls := h.pipe.LeaseGetCalls()
+		assert.Equal(t, 2, len(getCalls))
+		assert.Equal(t, "TENANT01:41:", getCalls[0].Key)
+		assert.Equal(t, "TENANT02:42:", getCalls[1].Key)
+	})
+
+	t.Run("lease-get-lease-granted--filler-do-get-multi", func(t *testing.T) {
+		h := newHashTest()
+
+		const cas1 = 7801
+		const cas2 = 7802
+
+		const keyHash1 = 0x71 << (64 - 8)
+		const keyHash2 = 0x72 << (64 - 8)
+
+		respList := []memproxy.LeaseGetResponse{
+			{
+				Status: memproxy.LeaseGetStatusLeaseGranted,
+				CAS:    cas1,
+			},
+			{
+				Status: memproxy.LeaseGetStatusLeaseGranted,
+				CAS:    cas2,
+			},
+		}
+
+		var callOrders []string
+
+		h.pipe.LeaseGetFunc = func(
+			key string, options memproxy.LeaseGetOptions,
+		) func() (memproxy.LeaseGetResponse, error) {
+			index := len(h.pipe.LeaseGetCalls()) - 1
+			callOrders = append(callOrders, "lease-get:"+key)
+
+			return func() (memproxy.LeaseGetResponse, error) {
+				callOrders = append(callOrders, "lease-func:"+key)
+				return respList[index], nil
+			}
+		}
+
+		fn1 := h.hash.Get(newContext(),
+			customerUsageRootKey{
+				Tenant:     "TENANT01",
+				CampaignID: 41,
+			}, customerUsageKey{
+				Phone:    "0987000111",
+				TermCode: "TERM01",
+				hash:     keyHash1,
+			},
+		)
+
+		h.fillerFunc = func(ctx context.Context, key BucketKey[customerUsageRootKey]) func() ([]byte, error) {
+			callOrders = append(callOrders, "filler-get:"+key.String())
+			return func() ([]byte, error) {
+				callOrders = append(callOrders, "filler-func:"+key.String())
+				return mustMarshalBucket(Bucket[customerUsage]{}), nil
+			}
+		}
+
+		h.pipe.LeaseSetFunc = func(
+			key string, data []byte, cas uint64, options memproxy.LeaseSetOptions,
+		) func() (memproxy.LeaseSetResponse, error) {
+			callOrders = append(callOrders, "lease-set-call:"+key)
+			return func() (memproxy.LeaseSetResponse, error) {
+				callOrders = append(callOrders, "lease-set-func:"+key)
+				return memproxy.LeaseSetResponse{}, nil
+			}
+		}
+
+		fn2 := h.hash.Get(newContext(),
+			customerUsageRootKey{
+				Tenant:     "TENANT02",
+				CampaignID: 42,
+			}, customerUsageKey{
+				Phone:    "0987000112",
+				TermCode: "TERM02",
+				hash:     keyHash2,
+			},
+		)
+
+		assert.Equal(t, []string{
+			"lease-get:TENANT01:41:",
+			"lease-get:TENANT02:42:",
+		}, callOrders)
+
+		resp, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Null[customerUsage]{}, resp)
+
+		resp, err = fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Null[customerUsage]{}, resp)
+
+		assert.Equal(t, []string{
+			"lease-get:TENANT01:41:",
+			"lease-get:TENANT02:42:",
+
+			"lease-func:TENANT01:41:", "filler-get:TENANT01:41:",
+			"lease-func:TENANT02:42:", "filler-get:TENANT02:42:",
+
+			"filler-func:TENANT01:41:",
+			"lease-set-call:TENANT01:41:",
+			"filler-func:TENANT02:42:",
+			"lease-set-call:TENANT02:42:",
+		}, callOrders)
+
+		getCalls := h.pipe.LeaseGetCalls()
+		assert.Equal(t, 2, len(getCalls))
+		assert.Equal(t, "TENANT01:41:", getCalls[0].Key)
+		assert.Equal(t, "TENANT02:42:", getCalls[1].Key)
+	})
+}
