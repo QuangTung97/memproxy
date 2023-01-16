@@ -81,6 +81,10 @@ func newItemTest() *itemTest {
 		}
 	}
 
+	pipe.LowerSessionFunc = func() memproxy.Session {
+		return sess
+	}
+
 	i := &itemTest{
 		pipe: pipe,
 		fillFunc: func(ctx context.Context, key userKey) func() (userValue, error) {
@@ -96,7 +100,7 @@ func newItemTest() *itemTest {
 		return i.fillFunc(ctx, key)
 	}
 
-	i.item = New(sess, pipe, unmarshalUser, userFiller)
+	i.item = New(pipe, unmarshalUser, userFiller)
 
 	// stubbing
 	i.stubLeaseSet()

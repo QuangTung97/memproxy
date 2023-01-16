@@ -85,7 +85,6 @@ type HashUpdater[T item.Value, R item.Key, K Key] struct {
 
 // New ...
 func New[T item.Value, R item.Key, K Key](
-	sess memproxy.Session,
 	pipeline memproxy.Pipeline,
 	getKey func(v T) K,
 	unmarshaler item.Unmarshaler[T],
@@ -106,13 +105,15 @@ func New[T item.Value, R item.Key, K Key](
 		}
 	}
 
+	bucketItem := item.New[Bucket[T], BucketKey[R]](
+		pipeline, bucketUnmarshaler, bucketFiller,
+	)
+
 	return &Hash[T, R, K]{
-		sess:   sess,
+		sess:   bucketItem.LowerSession(),
 		getKey: getKey,
 
-		bucketItem: item.New[Bucket[T], BucketKey[R]](
-			sess, pipeline, bucketUnmarshaler, bucketFiller,
-		),
+		bucketItem: bucketItem,
 	}
 }
 

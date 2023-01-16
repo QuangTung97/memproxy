@@ -42,6 +42,10 @@ func newPropertyTest() *propertyTest {
 		}
 	}
 
+	pipe.LowerSessionFunc = func() memproxy.Session {
+		return sess
+	}
+
 	bucketDataMap := map[BucketKey[customerUsageRootKey]][]byte{}
 
 	var filler Filler[customerUsageRootKey] = func(
@@ -53,7 +57,7 @@ func newPropertyTest() *propertyTest {
 	}
 
 	h := New[customerUsage, customerUsageRootKey, customerUsageKey](
-		sess, pipe,
+		pipe,
 		customerUsage.getKey,
 		unmarshalCustomerUsage, filler,
 	)

@@ -8,6 +8,7 @@ import (
 	"github.com/QuangTung97/memproxy"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 type customerUsage struct {
@@ -75,27 +76,16 @@ type hashTest struct {
 	fillerHashList []uint64
 }
 
-func newFakeSession() *memproxy.SessionMock {
-	sess := &memproxy.SessionMock{}
-	var calls []func()
-	sess.AddNextCallFunc = func(fn func()) {
-		calls = append(calls, fn)
-	}
-	sess.ExecuteFunc = func() {
-		for len(calls) > 0 {
-			nextCalls := calls
-			calls = nil
-			for _, fn := range nextCalls {
-				fn()
-			}
-		}
-	}
-	return sess
+func newFakeSession() memproxy.Session {
+	return memproxy.NewSessionProvider(time.Now, time.Sleep).New()
 }
 
 func newHashTest() *hashTest {
 	sess := newFakeSession()
 	pipe := &memproxy.PipelineMock{}
+	pipe.LowerSessionFunc = func() memproxy.Session {
+		return sess
+	}
 
 	h := &hashTest{
 		pipe: pipe,
@@ -115,7 +105,7 @@ func newHashTest() *hashTest {
 	}
 
 	h.hash = New[customerUsage, customerUsageRootKey, customerUsageKey](
-		sess, pipe, customerUsage.getKey, unmarshalCustomerUsage, filler,
+		pipe, customerUsage.getKey, unmarshalCustomerUsage, filler,
 	)
 
 	return h

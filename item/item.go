@@ -24,14 +24,12 @@ type Filler[T any, K any] func(ctx context.Context, key K) func() (T, error)
 
 // New ...
 func New[T Value, K Key](
-	sess memproxy.Session,
 	pipeline memproxy.Pipeline,
-
 	unmarshaler Unmarshaler[T],
 	filler Filler[T, K],
 ) *Item[T, K] {
 	return &Item[T, K]{
-		sess:     sess,
+		sess:     pipeline.LowerSession(),
 		pipeline: pipeline,
 
 		unmarshaler: unmarshaler,
@@ -110,4 +108,9 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 		i.sess.Execute()
 		return result.resp, result.err
 	}
+}
+
+// LowerSession ...
+func (i *Item[T, K]) LowerSession() memproxy.Session {
+	return i.sess.GetLower()
 }
