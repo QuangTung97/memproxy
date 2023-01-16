@@ -120,11 +120,6 @@ func New[T item.Value, R item.Key, K Key](
 	}
 }
 
-type getResult[T any] struct {
-	resp Null[T]
-	err  error
-}
-
 func computeMaskAtLevel(level uint8) uint64 {
 	return math.MaxUint64 << (64 - 8*level)
 }
@@ -133,14 +128,16 @@ func computeHashAtLevel(hash uint64, level uint8) uint64 {
 	return hash & computeMaskAtLevel(level)
 }
 
-func computeBitOffsetAtLevel(hash uint64, currentHashLen uint8) int {
-	offset := (hash >> (64 - 8 - currentHashLen*8)) & 0xff
-	return int(offset)
-}
-
 func computeBitOffsetForNextLevel(hash uint64, nextLevel uint8) int {
 	offset := (hash >> (64 - nextLevel*8)) & 0xff
 	return int(offset)
+}
+
+type callContext struct {
+	level       uint8
+	levelCalls  int
+	err         error
+	doComputeFn func()
 }
 
 // Get ...
@@ -150,42 +147,39 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 	var rootBucketFn func() (Bucket[T], error)
 	var nextCallFn func()
 
-	level := uint8(0)
-	levelCalls := 0
+	callCtx := callContext{
+		level:      0,
+		levelCalls: 0,
+	}
 
 	doGetFn := func() {
 		rootBucketFn = h.bucketItem.Get(ctx, BucketKey[R]{
 			RootKey: rootKey,
-			Level:   level,
-			Hash:    computeHashAtLevel(keyHash, level),
+			Level:   callCtx.level,
+			Hash:    computeHashAtLevel(keyHash, callCtx.level),
 		})
 		h.sess.AddNextCall(nextCallFn)
 	}
 
-	var result getResult[T]
+	callCtx.doComputeFn = doGetFn
+
+	var resp Null[T]
 	nextCallFn = func() {
 		bucket, err := rootBucketFn()
 		if err != nil {
-			result.err = err
+			callCtx.err = err
 			return
 		}
 
-		bitOffset := computeBitOffsetAtLevel(keyHash, level)
-		if bucket.Bitset.GetBit(bitOffset) {
-			level = bucket.NextLevel
-			levelCalls++
-			if levelCalls >= maxDeepLevels {
-				result.err = ErrHashTooDeep
-				return
-			}
-			doGetFn()
+		continuing := checkNextContinuingOnLevel(&bucket, keyHash, &callCtx)
+		if !continuing {
 			return
 		}
 
 		for _, bucketItem := range bucket.Items {
 			itemKey := h.getKey(bucketItem)
 			if itemKey == key {
-				result.resp = Null[T]{
+				resp = Null[T]{
 					Valid: true,
 					Data:  bucketItem,
 				}
@@ -198,6 +192,6 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 
 	return func() (Null[T], error) {
 		h.sess.Execute()
-		return result.resp, result.err
+		return resp, callCtx.err
 	}
 }

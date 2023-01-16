@@ -249,6 +249,31 @@ func (u *HashUpdater[T, R, K]) doUpsertBucket(
 	return nil
 }
 
+func checkNextContinuingOnLevel[T item.Value](
+	bucket *Bucket[T], keyHash uint64,
+	callCtx *callContext,
+) (continuing bool) {
+	if bucket.NextLevel == 0 {
+		return true
+	}
+
+	offset := computeBitOffsetForNextLevel(keyHash, bucket.NextLevel)
+	if !bucket.Bitset.GetBit(offset) {
+		return true
+	}
+
+	callCtx.level = bucket.NextLevel
+
+	callCtx.levelCalls++
+	if callCtx.levelCalls >= maxDeepLevels {
+		callCtx.err = ErrHashTooDeep
+		return false
+	}
+
+	callCtx.doComputeFn()
+	return false
+}
+
 // UpsertBucket ...
 func (u *HashUpdater[T, R, K]) UpsertBucket(
 	ctx context.Context, rootKey R, value T,
@@ -256,74 +281,57 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 	key := u.getKey(value)
 	keyHash := key.Hash()
 
-	level := uint8(0)
-	levelCalls := 0
+	updateCtx := callContext{
+		level:      0,
+		levelCalls: 0,
+	}
 
-	var resultErr error
 	var fillerFn func() ([]byte, error)
 	var nextCallFn func()
 
 	doComputeFn := func() {
 		fillerFn = u.filler(ctx, BucketKey[R]{
 			RootKey: rootKey,
-			Level:   level,
-			Hash:    computeHashAtLevel(keyHash, level),
+			Level:   updateCtx.level,
+			Hash:    computeHashAtLevel(keyHash, updateCtx.level),
 		})
 		u.sess.AddNextCall(nextCallFn)
 	}
-
-	checkNextLevel := func(bucket *Bucket[T]) (continuing bool) {
-		if bucket.NextLevel == 0 {
-			return true
-		}
-
-		offset := computeBitOffsetForNextLevel(keyHash, bucket.NextLevel)
-		if !bucket.Bitset.GetBit(offset) {
-			return true
-		}
-
-		level = bucket.NextLevel
-
-		levelCalls++
-		if levelCalls >= maxDeepLevels {
-			resultErr = ErrHashTooDeep
-			return false
-		}
-		doComputeFn()
-		return false
-	}
+	updateCtx.doComputeFn = doComputeFn
 
 	nextCallFn = func() {
 		data, err := fillerFn()
 		if err != nil {
-			resultErr = err
+			updateCtx.err = err
 			return
 		}
 
 		bucket, err := u.unmarshaler(data)
 		if err != nil {
-			resultErr = err
+			updateCtx.err = err
 			return
 		}
 
-		continuing := checkNextLevel(&bucket)
+		continuing := checkNextContinuingOnLevel(
+			&bucket, keyHash, &updateCtx,
+		)
 		if !continuing {
 			return
 		}
 
 		updated := updateBucketDataItem(&bucket, value, u.getKey)
 		if updated {
-			resultErr = u.doUpsertBucket(bucket, rootKey, keyHash, level, false)
+			updateCtx.err = u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
 			return
 		}
 
 		if countNumberOfHashes(&bucket, u.getKey) < u.maxHashesPerBucket {
 			bucket.Items = append(bucket.Items, value)
-			resultErr = u.doUpsertBucket(bucket, rootKey, keyHash, level, false)
+			updateCtx.err = u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
 			return
 		}
 
-		nextLevel, prefix := findMaxPrefix[T, K](&bucket, level, u.getKey)
+		nextLevel, prefix := findMaxPrefix[T, K](&bucket, updateCtx.level, u.getKey)
 		bucket.NextLevel = nextLevel
 		bucket.NextLevelPrefix = prefix
 
@@ -332,15 +340,15 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey, nextLevel)
 
-		err = u.doUpsertBucket(bucket, rootKey, keyHash, level, false)
+		err = u.doUpsertBucket(bucket, rootKey, keyHash, updateCtx.level, false)
 		if err != nil {
-			resultErr = err
+			updateCtx.err = err
 			return
 		}
 
 		sameHashItems = append(sameHashItems, value)
 
-		resultErr = u.doUpsertBucket(Bucket[T]{
+		updateCtx.err = u.doUpsertBucket(Bucket[T]{
 			NextLevel:       0,
 			NextLevelPrefix: 0,
 
@@ -352,7 +360,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 	return func() error {
 		u.execute()
-		return resultErr
+		return updateCtx.err
 	}
 }
 
@@ -364,10 +372,11 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 ) func() error {
 	keyHash := key.Hash()
 
-	level := uint8(0)
-	levelCalls := 0
+	callCtx := callContext{
+		level:      0,
+		levelCalls: 0,
+	}
 
-	var resultErr error
 	var fillerFn func() ([]byte, error)
 	var nextCallFn func()
 
@@ -376,39 +385,32 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 	doComputeFn := func() {
 		fillerFn = u.filler(ctx, BucketKey[R]{
 			RootKey: rootKey,
-			Level:   level,
-			Hash:    computeHashAtLevel(keyHash, level),
+			Level:   callCtx.level,
+			Hash:    computeHashAtLevel(keyHash, callCtx.level),
 		})
 		u.sess.AddNextCall(nextCallFn)
 	}
+	callCtx.doComputeFn = doComputeFn
 
 	nextCallFn = func() {
 		data, err := fillerFn()
 		if err != nil {
-			resultErr = err
+			callCtx.err = err
 			return
 		}
 
 		bucket, err := u.unmarshaler(data)
 		if err != nil {
-			resultErr = err
+			callCtx.err = err
 			return
 		}
 		scannedBuckets = append(scannedBuckets, scannedBucket[T]{
 			bucket: &bucket,
-			level:  level,
+			level:  callCtx.level,
 		})
 
-		offset := computeBitOffsetAtLevel(keyHash, level)
-		if bucket.Bitset.GetBit(offset) {
-			level = bucket.NextLevel
-
-			levelCalls++
-			if levelCalls >= maxDeepLevels {
-				resultErr = ErrHashTooDeep
-				return
-			}
-			doComputeFn()
+		continuing := checkNextContinuingOnLevel(&bucket, keyHash, &callCtx)
+		if !continuing {
 			return
 		}
 
@@ -422,14 +424,14 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 			return
 		}
 
-		resultErr = u.deleteBucketInChain(scannedBuckets, rootKey, keyHash)
+		callCtx.err = u.deleteBucketInChain(scannedBuckets, rootKey, keyHash)
 	}
 
 	doComputeFn()
 
 	return func() error {
 		u.execute()
-		return resultErr
+		return callCtx.err
 	}
 }
 
@@ -471,7 +473,7 @@ func (u *HashUpdater[T, R, K]) deleteBucketInChain(
 		}
 
 		prevBucket := scannedBuckets[level-1]
-		prevBucket.bucket.Bitset.ClearBit(computeBitOffsetAtLevel(keyHash, level-1))
+		prevBucket.bucket.Bitset.ClearBit(computeBitOffsetForNextLevel(keyHash, level))
 	}
 
 	return nil
