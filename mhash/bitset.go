@@ -1,5 +1,7 @@
 package mhash
 
+import "math/bits"
+
 // SetBit ...
 func (b *BitSet) SetBit(index int) {
 	pos := index >> bitSetShift
@@ -29,4 +31,13 @@ func (b *BitSet) IsZero() bool {
 		}
 	}
 	return true
+}
+
+// Count ...
+func (b *BitSet) Count() int {
+	total := 0
+	for _, e := range b {
+		total += bits.OnesCount8(e)
+	}
+	return total
 }

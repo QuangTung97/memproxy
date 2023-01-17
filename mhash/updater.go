@@ -210,19 +210,6 @@ func hashPrefixEqual(a, b uint64, level uint8) bool {
 func splitBucketItemsWithAndWithoutSameHash[T item.Value, K Key](
 	b *Bucket[T], inputHash uint64, getKey func(T) K, level uint8,
 ) (sameHashItems []T) {
-	sameHash := false
-	for _, bucketItem := range b.Items {
-		itemHash := getKey(bucketItem).Hash()
-		if hashPrefixEqual(itemHash, inputHash, level) {
-			sameHash = true
-			break
-		}
-	}
-
-	if !sameHash {
-		return nil
-	}
-
 	newItems := make([]T, 0, len(b.Items))
 	for _, bucketItem := range b.Items {
 		itemHash := getKey(bucketItem).Hash()
@@ -311,8 +298,9 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 			return
 		}
 
-		if countNumberOfHashes(&bucket, u.getKey) < u.maxHashesPerBucket {
-			bucket.Items = append(bucket.Items, value)
+		bucket.Items = append(bucket.Items, value)
+
+		if countNumberOfHashes(&bucket, u.getKey) <= u.maxHashesPerBucket {
 			u.doUpsertBucket(bucket, rootKey, keyHash, callCtx.level, false)
 			return
 		}
@@ -345,8 +333,6 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 			u.doUpsertBucket(bucket, rootKey, keyHash, callCtx.level, false)
 		}
-
-		sameHashItems = append(sameHashItems, value)
 
 		u.doUpsertBucket(Bucket[T]{
 			NextLevel:       0,
