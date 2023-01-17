@@ -1367,4 +1367,40 @@ func TestFindMaxPrefix(t *testing.T) {
 		assert.Equal(t, uint8(9), nextLevel)
 		assert.Equal(t, uint64(0x1122334455667788), prefix)
 	})
+
+	t.Run("with-bucket-next-prefix--from-level-zero", func(t *testing.T) {
+		b := &Bucket[customerUsage]{
+			NextLevel:       3,
+			NextLevelPrefix: 0x1122 << (64 - 2*8),
+			Items: []customerUsage{
+				{
+					Hash: 0x1122334455667788,
+				},
+				{
+					Hash: 0x1122334455667788,
+				},
+			},
+		}
+		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 0, customerUsage.getKey)
+		assert.Equal(t, uint8(3), nextLevel)
+		assert.Equal(t, uint64(0x1122<<(64-2*8)), prefix)
+	})
+
+	t.Run("with-bucket-next-prefix--from-level-2", func(t *testing.T) {
+		b := &Bucket[customerUsage]{
+			NextLevel:       3,
+			NextLevelPrefix: 0x1122 << (64 - 2*8),
+			Items: []customerUsage{
+				{
+					Hash: 0x1122334455667788,
+				},
+				{
+					Hash: 0x1122334455667788,
+				},
+			},
+		}
+		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 2, customerUsage.getKey)
+		assert.Equal(t, uint8(3), nextLevel)
+		assert.Equal(t, uint64(0x1122<<(64-2*8)), prefix)
+	})
 }

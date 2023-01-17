@@ -166,16 +166,23 @@ func NewUpdater[T item.Value, R item.Key, K Key](
 }
 
 func findMaxPrefix[T item.Value, K Key](
-	b *Bucket[T], currentLevel uint8, getKey func(T) K,
+	b *Bucket[T],
+	currentLevel uint8, // for optimization
+	getKey func(T) K,
 ) (nextLevel uint8, prefix uint64) {
 	var level uint8
 	var mask, first uint64
 
 	for level = currentLevel + 1; level < 9; level++ {
 		mask = computeMaskAtLevel(level)
-		first = getKey(b.Items[0]).Hash() & mask
 
-		for _, it := range b.Items[1:] {
+		if b.NextLevel > 0 {
+			first = b.NextLevelPrefix & mask
+		} else {
+			first = getKey(b.Items[0]).Hash() & mask
+		}
+
+		for _, it := range b.Items {
 			hash := getKey(it).Hash() & mask
 			if first != hash {
 				return level, first & (mask << 8)
@@ -311,15 +318,34 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 		}
 
 		nextLevel, prefix := findMaxPrefix[T, K](&bucket, callCtx.level, u.getKey)
-		bucket.NextLevel = nextLevel
-		bucket.NextLevelPrefix = prefix
-
-		offset := computeBitOffsetForNextLevel(keyHash, nextLevel)
-		bucket.Bitset.SetBit(offset)
 
 		sameHashItems := splitBucketItemsWithAndWithoutSameHash(&bucket, keyHash, u.getKey, nextLevel)
 
-		u.doUpsertBucket(bucket, rootKey, keyHash, callCtx.level, false)
+		if bucket.NextLevel > 0 && nextLevel < bucket.NextLevel {
+			var bitSet BitSet
+
+			bitSet.SetBit(computeBitOffsetForNextLevel(bucket.NextLevelPrefix, nextLevel))
+			bitSet.SetBit(computeBitOffsetForNextLevel(keyHash, nextLevel))
+
+			newBucket := Bucket[T]{
+				NextLevel:       nextLevel,
+				NextLevelPrefix: prefix,
+				Bitset:          bitSet,
+			}
+
+			// TODO Update Root of Tree
+			u.doUpsertBucket(newBucket, rootKey, keyHash, 0, false)
+
+			u.doUpsertBucket(bucket, rootKey, bucket.NextLevelPrefix, nextLevel, false)
+		} else {
+			bucket.NextLevel = nextLevel
+			bucket.NextLevelPrefix = prefix
+
+			offset := computeBitOffsetForNextLevel(keyHash, nextLevel)
+			bucket.Bitset.SetBit(offset)
+
+			u.doUpsertBucket(bucket, rootKey, keyHash, callCtx.level, false)
+		}
 
 		sameHashItems = append(sameHashItems, value)
 

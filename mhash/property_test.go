@@ -7,6 +7,7 @@ import (
 	"github.com/spaolacci/murmur3"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
+	"sort"
 	"testing"
 	"time"
 )
@@ -26,6 +27,21 @@ func (p *propertyTest) addCall(op string, key string) {
 
 func (p *propertyTest) clearCalls() {
 	p.callOrders = []string{}
+}
+
+func (p *propertyTest) getBucketDataList() []BucketData[customerUsageRootKey] {
+	var bucketDataList []BucketData[customerUsageRootKey]
+	for key, data := range p.bucketDataMap {
+		bucketDataList = append(bucketDataList, BucketData[customerUsageRootKey]{
+			Key:  key,
+			Data: data,
+		})
+	}
+
+	sort.Slice(bucketDataList, func(i, j int) bool {
+		return bucketDataList[i].Key.String() < bucketDataList[j].Key.String()
+	})
+	return bucketDataList
 }
 
 func newPropertyTest(maxHashesPerBucket int) *propertyTest {
@@ -107,6 +123,14 @@ func newPropertyTest(maxHashesPerBucket int) *propertyTest {
 	p.updater = updater
 
 	return p
+}
+
+func mustUnmarshalBucket(data []byte) Bucket[customerUsage] {
+	bucket, err := BucketUnmarshalerFromItem(unmarshalCustomerUsage)(data)
+	if err != nil {
+		panic(err)
+	}
+	return bucket
 }
 
 func TestHash_PropertyBased__Upsert_And_Get(t *testing.T) {
@@ -468,6 +492,120 @@ func TestHash_PropertyBased__Multi_Upsert__Exceed_Limit(t *testing.T) {
 			Hash:    0x8822,
 		}: data2,
 	}, p.bucketDataMap)
+}
+
+func TestHash_PropertyBased__Multi_Upsert__Exceed_Next_Level_Prefix(t *testing.T) {
+	p := newPropertyTest(2)
+
+	rootKey := customerUsageRootKey{
+		Tenant:     "TENANT01",
+		CampaignID: 141,
+	}
+
+	newUsage := func(i int, hash uint64) customerUsage {
+		phone := fmt.Sprintf("098700011%d", i)
+		return customerUsage{
+			Tenant:     rootKey.Tenant,
+			CampaignID: rootKey.CampaignID,
+			Phone:      phone,
+			TermCode:   fmt.Sprintf("TERM0%d", i),
+			Hash:       hash,
+		}
+	}
+
+	usage1 := newUsage(1, 0x88772101<<(64-4*8))
+	usage2 := newUsage(2, 0x88772201<<(64-4*8))
+	usage3 := newUsage(3, 0x88772202<<(64-4*8))
+	usage4 := newUsage(4, 0x886622<<(64-3*8))
+	usage5 := newUsage(5, 0x886623<<(64-3*8))
+
+	assert.Equal(t, []string{}, p.callOrders)
+
+	fn1 := p.updater.UpsertBucket(newContext(), rootKey, usage1)
+	fn2 := p.updater.UpsertBucket(newContext(), rootKey, usage2)
+	fn3 := p.updater.UpsertBucket(newContext(), rootKey, usage3)
+	fn4 := p.updater.UpsertBucket(newContext(), rootKey, usage4)
+	fn5 := p.updater.UpsertBucket(newContext(), rootKey, usage5)
+
+	assert.Equal(t, nil, fn1())
+	assert.Equal(t, nil, fn2())
+	assert.Equal(t, nil, fn3())
+	assert.Equal(t, nil, fn4())
+	assert.Equal(t, nil, fn5())
+
+	assert.Equal(t, []string{
+		"fill-get::TENANT01:141:",
+		"fill-get-func::TENANT01:141:",
+	}, p.callOrders)
+
+	bucketDataList := p.getBucketDataList()
+
+	assert.Equal(t, 4, len(bucketDataList))
+	assert.Equal(t, "TENANT01:141:", bucketDataList[0].Key.String())
+	assert.Equal(t, "TENANT01:141:8866", bucketDataList[1].Key.String())
+	assert.Equal(t, "TENANT01:141:8877", bucketDataList[2].Key.String())
+	assert.Equal(t, "TENANT01:141:887722", bucketDataList[3].Key.String())
+
+	assert.Equal(t, Bucket[customerUsage]{
+		NextLevel:       2,
+		NextLevelPrefix: 0x88 << (64 - 8),
+		Items:           []customerUsage{},
+		Bitset:          newBitSet(0x66, 0x77),
+	}, mustUnmarshalBucket(bucketDataList[0].Data))
+
+	assert.Equal(t, Bucket[customerUsage]{
+		NextLevel:       0,
+		NextLevelPrefix: 0,
+		Items: []customerUsage{
+			usage4, usage5,
+		},
+	}, mustUnmarshalBucket(bucketDataList[1].Data))
+
+	assert.Equal(t, Bucket[customerUsage]{
+		NextLevel:       3,
+		NextLevelPrefix: 0x8877 << (64 - 2*8),
+		Items: []customerUsage{
+			usage1,
+		},
+		Bitset: newBitSet(0x22),
+	}, mustUnmarshalBucket(bucketDataList[2].Data))
+
+	assert.Equal(t, Bucket[customerUsage]{
+		NextLevel:       0,
+		NextLevelPrefix: 0,
+		Items: []customerUsage{
+			usage2, usage3,
+		},
+	}, mustUnmarshalBucket(bucketDataList[3].Data))
+
+	// Get Data
+	nullUsage, err := p.hash.Get(newContext(), rootKey, usage1.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage1,
+	}, nullUsage)
+
+	nullUsage, err = p.hash.Get(newContext(), rootKey, usage2.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage2,
+	}, nullUsage)
+
+	nullUsage, err = p.hash.Get(newContext(), rootKey, usage3.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage3,
+	}, nullUsage)
+
+	nullUsage, err = p.hash.Get(newContext(), rootKey, usage5.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage5,
+	}, nullUsage)
 }
 
 func TestHash_PropertyBased__Multi_Upsert_And_Delete_Single__Exceed_Limit(t *testing.T) {
