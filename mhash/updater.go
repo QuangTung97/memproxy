@@ -333,8 +333,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 				Bitset:          bitSet,
 			}
 
-			// TODO Update Root of Tree
-			u.doUpsertBucket(newBucket, rootKey, keyHash, 0, false)
+			u.doUpsertBucket(newBucket, rootKey, keyHash, callCtx.level, false)
 
 			u.doUpsertBucket(bucket, rootKey, bucket.NextLevelPrefix, nextLevel, false)
 		} else {

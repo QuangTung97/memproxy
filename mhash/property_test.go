@@ -608,6 +608,181 @@ func TestHash_PropertyBased__Multi_Upsert__Exceed_Next_Level_Prefix(t *testing.T
 	}, nullUsage)
 }
 
+func TestHash_PropertyBased__Multi_Upsert__Exceed_Next_Level_Prefix__In_Middle(t *testing.T) {
+	p := newPropertyTest(2)
+
+	rootKey := customerUsageRootKey{
+		Tenant:     "TENANT01",
+		CampaignID: 141,
+	}
+
+	newUsage := func(i int, hash uint64) customerUsage {
+		phone := fmt.Sprintf("098700011%d", i)
+		return customerUsage{
+			Tenant:     rootKey.Tenant,
+			CampaignID: rootKey.CampaignID,
+			Phone:      phone,
+			TermCode:   fmt.Sprintf("TERM0%d", i),
+			Hash:       hash,
+		}
+	}
+
+	usage1 := newUsage(1, 0x87<<(64-1*8))
+	usage2 := newUsage(2, 0x886621<<(64-3*8))
+	usage3 := newUsage(3, 0x87<<(64-1*8))
+
+	usage8 := newUsage(8, 0x85<<(64-1*8))
+
+	usage4 := newUsage(4, 0x88662241<<(64-4*8))
+	usage5 := newUsage(5, 0x88662242<<(64-4*8))
+
+	usage6 := newUsage(6, 0x886731<<(64-3*8))
+	usage7 := newUsage(7, 0x886732<<(64-3*8))
+
+	assert.Equal(t, []string{}, p.callOrders)
+
+	fn1 := p.updater.UpsertBucket(newContext(), rootKey, usage1)
+	fn2 := p.updater.UpsertBucket(newContext(), rootKey, usage2)
+	fn3 := p.updater.UpsertBucket(newContext(), rootKey, usage3)
+
+	fn8 := p.updater.UpsertBucket(newContext(), rootKey, usage8)
+
+	fn4 := p.updater.UpsertBucket(newContext(), rootKey, usage4)
+	fn5 := p.updater.UpsertBucket(newContext(), rootKey, usage5)
+	fn6 := p.updater.UpsertBucket(newContext(), rootKey, usage6)
+	fn7 := p.updater.UpsertBucket(newContext(), rootKey, usage7)
+
+	assert.Equal(t, nil, fn1())
+	assert.Equal(t, nil, fn2())
+	assert.Equal(t, nil, fn3())
+
+	assert.Equal(t, nil, fn8())
+
+	assert.Equal(t, nil, fn4())
+	assert.Equal(t, nil, fn5())
+	assert.Equal(t, nil, fn6())
+	assert.Equal(t, nil, fn7())
+
+	assert.Equal(t, []string{
+		"fill-get::TENANT01:141:",
+		"fill-get-func::TENANT01:141:",
+	}, p.callOrders)
+
+	bucketDataList := p.getBucketDataList()
+
+	assert.Equal(t, 6, len(bucketDataList))
+	assert.Equal(t, "TENANT01:141:", bucketDataList[0].Key.String())
+	assert.Equal(t, "TENANT01:141:87", bucketDataList[1].Key.String())
+	assert.Equal(t, "TENANT01:141:88", bucketDataList[2].Key.String())
+	assert.Equal(t, "TENANT01:141:8866", bucketDataList[3].Key.String())
+	assert.Equal(t, "TENANT01:141:886622", bucketDataList[4].Key.String())
+	assert.Equal(t, "TENANT01:141:8867", bucketDataList[5].Key.String())
+
+	assert.Equal(t, Bucket[customerUsage]{
+		NextLevel:       1,
+		NextLevelPrefix: 0,
+		Items:           []customerUsage{usage8},
+		Bitset:          newBitSet(0x87, 0x88),
+	}, mustUnmarshalBucket(bucketDataList[0].Data))
+
+	assert.Equal(t, Bucket[customerUsage]{
+		NextLevel:       0,
+		NextLevelPrefix: 0,
+		Items: []customerUsage{
+			usage1, usage3,
+		},
+	}, mustUnmarshalBucket(bucketDataList[1].Data))
+
+	assert.Equal(t, Bucket[customerUsage]{
+		NextLevel:       2,
+		NextLevelPrefix: 0x88 << (64 - 1*8),
+		Items:           []customerUsage{},
+		Bitset:          newBitSet(0x66, 0x67),
+	}, mustUnmarshalBucket(bucketDataList[2].Data))
+
+	assert.Equal(t, Bucket[customerUsage]{
+		NextLevel:       3,
+		NextLevelPrefix: 0x8866 << (64 - 2*8),
+		Items: []customerUsage{
+			usage2,
+		},
+		Bitset: newBitSet(0x22),
+	}, mustUnmarshalBucket(bucketDataList[3].Data))
+
+	assert.Equal(t, Bucket[customerUsage]{
+		NextLevel:       0,
+		NextLevelPrefix: 0,
+		Items: []customerUsage{
+			usage4, usage5,
+		},
+	}, mustUnmarshalBucket(bucketDataList[4].Data))
+
+	assert.Equal(t, Bucket[customerUsage]{
+		NextLevel:       0,
+		NextLevelPrefix: 0,
+		Items: []customerUsage{
+			usage6, usage7,
+		},
+	}, mustUnmarshalBucket(bucketDataList[5].Data))
+
+	// Get Data
+	nullUsage, err := p.hash.Get(newContext(), rootKey, usage1.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage1,
+	}, nullUsage)
+
+	nullUsage, err = p.hash.Get(newContext(), rootKey, usage2.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage2,
+	}, nullUsage)
+
+	nullUsage, err = p.hash.Get(newContext(), rootKey, usage3.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage3,
+	}, nullUsage)
+
+	nullUsage, err = p.hash.Get(newContext(), rootKey, usage4.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage4,
+	}, nullUsage)
+
+	nullUsage, err = p.hash.Get(newContext(), rootKey, usage5.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage5,
+	}, nullUsage)
+
+	nullUsage, err = p.hash.Get(newContext(), rootKey, usage6.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage6,
+	}, nullUsage)
+
+	nullUsage, err = p.hash.Get(newContext(), rootKey, usage7.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage7,
+	}, nullUsage)
+
+	nullUsage, err = p.hash.Get(newContext(), rootKey, usage8.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Null[customerUsage]{
+		Valid: true,
+		Data:  usage8,
+	}, nullUsage)
+}
+
 func TestHash_PropertyBased__Multi_Upsert_And_Delete_Single__Exceed_Limit(t *testing.T) {
 	p := newPropertyTest(2)
 
