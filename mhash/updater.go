@@ -276,7 +276,7 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 	callCtx := callContext{}
 
 	var fillerFn func() (Bucket[T], error)
-	var nextCallFn func() func()
+	var nextCallFn func(withUpdate bool)
 
 	doComputeWithUpdate := func(withUpdate bool) {
 		fillerFn = u.filler(ctx, BucketKey[R]{
@@ -285,11 +285,10 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 			Hash:    computeHashAtLevel(keyHash, callCtx.level),
 		})
 		if withUpdate {
-			updateFn := nextCallFn()
-			updateFn()
+			nextCallFn(true)
 		} else {
 			u.sess.AddNextCall(func() {
-				nextCallFn()
+				nextCallFn(false)
 			})
 		}
 	}
@@ -332,21 +331,21 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 		}, rootKey, keyHash, nextLevel, false)
 	}
 
-	nextCallFn = func() func() {
+	nextCallFn = func(withUpdate bool) {
 		bucket, err := fillerFn()
 		if err != nil {
 			callCtx.err = err
-			return func() {}
+			return
 		}
 
 		continuing := checkContinueOnNextLevel(
 			&bucket, keyHash, &callCtx,
 		)
 		if !continuing {
-			return func() {}
+			return
 		}
 
-		return func() {
+		if withUpdate {
 			nextCallUpdateFn(bucket)
 		}
 	}
@@ -379,7 +378,7 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 	var scannedBuckets []scannedBucket[T]
 
 	var fillerFn func() (Bucket[T], error)
-	var nextCallFn func() func()
+	var nextCallFn func(withUpdate bool)
 
 	doComputeWithUpdate := func(withUpdate bool) {
 		fillerFn = u.filler(ctx, BucketKey[R]{
@@ -388,11 +387,10 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 			Hash:    computeHashAtLevel(keyHash, callCtx.level),
 		})
 		if withUpdate {
-			updateFn := nextCallFn()
-			updateFn()
+			nextCallFn(true)
 		} else {
 			u.sess.AddNextCall(func() {
-				nextCallFn()
+				nextCallFn(false)
 			})
 		}
 	}
@@ -401,11 +399,11 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 		doComputeWithUpdate(false)
 	}
 
-	nextCallFn = func() func() {
+	nextCallFn = func(withUpdate bool) {
 		bucket, err := fillerFn()
 		if err != nil {
 			callCtx.err = err
-			return func() {}
+			return
 		}
 
 		scannedBuckets = append(scannedBuckets, scannedBucket[T]{
@@ -415,10 +413,10 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 
 		continuing := checkContinueOnNextLevel(&bucket, keyHash, &callCtx)
 		if !continuing {
-			return func() {}
+			return
 		}
 
-		return func() {
+		if withUpdate {
 			prevLen := len(bucket.Items)
 
 			bucket.Items = removeItemInList[T](bucket.Items, func(e T) bool {
