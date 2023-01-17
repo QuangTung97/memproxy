@@ -173,14 +173,17 @@ func findMaxPrefix[T item.Value, K Key](
 	var level uint8
 	var mask, first uint64
 
-	for level = currentLevel + 1; level < 9; level++ {
-		mask = computeMaskAtLevel(level)
+	maxLevel := uint8(9)
+	firstHash := getKey(b.Items[0]).Hash()
 
-		if b.NextLevel > 0 {
-			first = b.NextLevelPrefix & mask
-		} else {
-			first = getKey(b.Items[0]).Hash() & mask
-		}
+	if b.NextLevel > 0 {
+		maxLevel = b.NextLevel
+		firstHash = b.NextLevelPrefix
+	}
+
+	for level = currentLevel; level < maxLevel; level++ {
+		mask = computeMaskAtLevel(level)
+		first = firstHash & mask
 
 		for _, it := range b.Items {
 			hash := getKey(it).Hash() & mask
@@ -189,6 +192,7 @@ func findMaxPrefix[T item.Value, K Key](
 			}
 		}
 	}
+
 	return level, first
 }
 

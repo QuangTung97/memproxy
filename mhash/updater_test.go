@@ -1388,8 +1388,8 @@ func TestFindMaxPrefix(t *testing.T) {
 
 	t.Run("with-bucket-next-prefix--from-level-2", func(t *testing.T) {
 		b := &Bucket[customerUsage]{
-			NextLevel:       3,
-			NextLevelPrefix: 0x1122 << (64 - 2*8),
+			NextLevel:       4,
+			NextLevelPrefix: 0x112255 << (64 - 3*8),
 			Items: []customerUsage{
 				{
 					Hash: 0x1122334455667788,
@@ -1402,5 +1402,62 @@ func TestFindMaxPrefix(t *testing.T) {
 		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 2, customerUsage.getKey)
 		assert.Equal(t, uint8(3), nextLevel)
 		assert.Equal(t, uint64(0x1122<<(64-2*8)), prefix)
+	})
+
+	t.Run("with-bucket-next-prefix--not-exceed-existing-next-level", func(t *testing.T) {
+		b := &Bucket[customerUsage]{
+			NextLevel:       4,
+			NextLevelPrefix: 0x112233 << (64 - 3*8),
+			Items: []customerUsage{
+				{
+					Hash: 0x1122330055667788,
+				},
+				{
+					Hash: 0x1122330055667788,
+				},
+			},
+		}
+		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 2, customerUsage.getKey)
+		assert.Equal(t, uint8(4), nextLevel)
+		assert.Equal(t, uint64(0x112233<<(64-3*8)), prefix)
+	})
+
+	t.Run("with-bucket-next-prefix--from-1--not-exceed-existing-next-level", func(t *testing.T) {
+		b := &Bucket[customerUsage]{
+			NextLevel:       4,
+			NextLevelPrefix: 0x112233 << (64 - 3*8),
+			Items: []customerUsage{
+				{
+					Hash: 0x1122330055667788,
+				},
+				{
+					Hash: 0x1122330055667788,
+				},
+			},
+		}
+		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 1, customerUsage.getKey)
+		assert.Equal(t, uint8(4), nextLevel)
+		assert.Equal(t, uint64(0x112233<<(64-3*8)), prefix)
+	})
+
+	t.Run("should-from-current-level-not-current-level-plus-one", func(t *testing.T) {
+		b := &Bucket[customerUsage]{
+			NextLevel:       8,
+			NextLevelPrefix: 0x600,
+			Items: []customerUsage{
+				{
+					Hash: 0x6CB,
+				},
+				{
+					Hash: 0x636,
+				},
+				{
+					Hash: 0x6E0,
+				},
+			},
+		}
+		nextLevel, prefix := findMaxPrefix[customerUsage, customerUsageKey](b, 7, customerUsage.getKey)
+		assert.Equal(t, uint8(8), nextLevel)
+		assert.Equal(t, uint64(0x600), prefix)
 	})
 }

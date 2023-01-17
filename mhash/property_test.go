@@ -1036,44 +1036,6 @@ func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func__2(t *testi
 
 		expected, ok := usageMap[key]
 
-		if result.Valid != ok {
-			fmt.Println("ROOT:", key.rootKey)
-			fmt.Println("KEY OBJ:", key.key)
-			fmt.Printf("KEY HASH: %x\n", key.key.Hash())
-
-			data := p.bucketDataMap[BucketKey[customerUsageRootKey]{
-				RootKey: key.rootKey,
-				Level:   0,
-				Hash:    0,
-			}]
-			bucket1 := mustUnmarshalBucket(data)
-			fmt.Println("NEXT LEVEL:", bucket1.NextLevel)
-			fmt.Printf("NEXT LEVEL PREFIX: %x\n", bucket1.NextLevelPrefix)
-			fmt.Println(bucket1.Bitset.GetBit(0x3b))
-
-			fmt.Println(bucket1.Bitset)
-
-			data = p.bucketDataMap[BucketKey[customerUsageRootKey]{
-				RootKey: key.rootKey,
-				Level:   7,
-				Hash:    0x143b00,
-			}]
-			bucket2 := mustUnmarshalBucket(data)
-			fmt.Println("BUCKET2 ITEMS:", bucket2.Items)
-			for _, it := range bucket2.Items {
-				fmt.Printf("ITEM KEY HASH: %x\n", it.getKey().Hash())
-			}
-			fmt.Println("BUCKET2 IS ZERO:", bucket2.Bitset.IsZero())
-
-			//for _, bucketData := range p.getBucketDataList() {
-			//	fmt.Println(bucketData.Key.String())
-			//}
-
-			fmt.Println("EXPECTED:", expected, result)
-
-			t.Fatalf("Invalid")
-		}
-
 		assert.Equal(t, ok, result.Valid)
 		assert.Equal(t, expected, result.Data)
 	}
@@ -1081,7 +1043,7 @@ func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func__2(t *testi
 	fmt.Println("SEED:", seed)
 }
 
-func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func(t *testing.T) {
+func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func__Disable_Seed(t *testing.T) {
 	seed := time.Now().Unix()
 	seed = 1673936625
 	fmt.Println("SEED:", seed)
@@ -1167,42 +1129,97 @@ func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func(t *testing.
 
 		expected, ok := usageMap[key]
 
-		if result.Valid != ok {
-			fmt.Println("ROOT:", key.rootKey)
-			fmt.Println("KEY OBJ:", key.key)
-			fmt.Printf("KEY HASH: %x\n", key.key.Hash())
+		assert.Equal(t, ok, result.Valid)
+		assert.Equal(t, expected, result.Data)
+	}
 
-			data := p.bucketDataMap[BucketKey[customerUsageRootKey]{
-				RootKey: key.rootKey,
-				Level:   0,
-				Hash:    0,
-			}]
-			bucket1 := mustUnmarshalBucket(data)
-			fmt.Println("NEXT LEVEL:", bucket1.NextLevel)
-			fmt.Printf("NEXT LEVEL PREFIX: %x\n", bucket1.NextLevelPrefix)
-			fmt.Println(bucket1.Bitset.GetBit(0x87))
-			fmt.Println(bucket1.Bitset)
+	fmt.Println("SEED:", seed)
+}
 
-			data = p.bucketDataMap[BucketKey[customerUsageRootKey]{
-				RootKey: key.rootKey,
-				Level:   8,
-				Hash:    0x885,
-			}]
-			bucket2 := mustUnmarshalBucket(data)
-			fmt.Println(bucket2.Items)
-			for _, it := range bucket2.Items {
-				fmt.Printf("ITEM KEY HASH: %x\n", it.getKey().Hash())
-			}
-			fmt.Println("BUCKET2 IS ZERO:", bucket2.Bitset.IsZero())
+func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func(t *testing.T) {
+	seed := time.Now().Unix()
+	fmt.Println("SEED:", seed)
+	rand.Seed(seed)
 
-			//for _, bucketData := range p.getBucketDataList() {
-			//	fmt.Println(bucketData.Key.String())
-			//}
+	p := newPropertyTest(2)
 
-			fmt.Println("EXPECTED:", expected, result)
+	rootKeys := []customerUsageRootKey{
+		{
+			Tenant:     "TENANT01",
+			CampaignID: 141,
+		},
+		{
+			Tenant:     "TENANT02",
+			CampaignID: 142,
+		},
+		{
+			Tenant:     "TENANT03",
+			CampaignID: 143,
+		},
+	}
 
-			t.Fatalf("Invalid")
+	var calls []func() error
+
+	type combinedKey struct {
+		rootKey customerUsageRootKey
+		key     customerUsageKey
+	}
+	usageMap := map[combinedKey]customerUsage{}
+
+	const termCode = "TERM01"
+
+	const numKeys = 5000
+
+	var combinedKeys []combinedKey
+
+	for k := 0; k < numKeys; k++ {
+		rootKey := rootKeys[rand.Intn(len(rootKeys))]
+		phone := fmt.Sprintf("0987%06d", rand.Intn(numKeys))
+		hashNum := uint64(rand.Intn(numKeys / 2))
+		usage := customerUsage{
+			Tenant:     rootKey.Tenant,
+			CampaignID: rootKey.CampaignID,
+			Phone:      phone,
+			TermCode:   termCode,
+			Hash:       hashNum,
 		}
+
+		combinedKeys = append(combinedKeys, combinedKey{
+			rootKey: rootKey,
+			key:     usage.getKey(),
+		})
+
+		usageMap[combinedKey{
+			rootKey: usage.getRootKey(),
+			key:     usage.getKey(),
+		}] = usage
+
+		fn := p.updater.UpsertBucket(newContext(), rootKey, usage)
+		calls = append(calls, fn)
+	}
+
+	for _, call := range calls {
+		err := call()
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	var resultCalls []func() (Null[customerUsage], error)
+
+	for _, rootKey := range combinedKeys {
+		fn := p.hash.Get(newContext(), rootKey.rootKey, rootKey.key)
+		resultCalls = append(resultCalls, fn)
+	}
+
+	for i := range resultCalls {
+		call := resultCalls[i]
+		key := combinedKeys[i]
+
+		result, err := call()
+		assert.Equal(t, nil, err)
+
+		expected, ok := usageMap[key]
 
 		assert.Equal(t, ok, result.Valid)
 		assert.Equal(t, expected, result.Data)
