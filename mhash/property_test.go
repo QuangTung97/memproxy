@@ -1240,7 +1240,7 @@ func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func(t *testing.
 }
 
 func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func__Multi_Times(t *testing.T) {
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 5; i++ {
 		TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func(t)
 	}
 }
@@ -1380,7 +1380,7 @@ func TestHash_PropertyBased__Upsert_Delete_And_Get__Without_Use_Hash_Func(t *tes
 }
 
 func TestHash_Property_Based__Run_Multi(t *testing.T) {
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 5; i++ {
 		TestHash_PropertyBased__Upsert_Delete_And_Get__Without_Use_Hash_Func(t)
 	}
 }

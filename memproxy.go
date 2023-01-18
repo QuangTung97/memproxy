@@ -52,7 +52,6 @@ type GetResponse struct {
 
 // LeaseGetOptions lease get options
 type LeaseGetOptions struct {
-	FillParams any // deprecated TODO
 }
 
 // LeaseGetStatus status of lease get
@@ -109,25 +108,7 @@ type Filler interface {
 }
 
 type pipelineOptions struct {
-	newFillerParams any
-}
-
-func computePipelineOptions(options []PipelineOption) pipelineOptions {
-	opts := pipelineOptions{
-		newFillerParams: nil,
-	}
-	for _, fn := range options {
-		fn(&opts)
-	}
-	return opts
 }
 
 // PipelineOption ...
 type PipelineOption func(opts *pipelineOptions)
-
-// WithNewFillerParams ...
-func WithNewFillerParams(params any) PipelineOption {
-	return func(opts *pipelineOptions) {
-		opts.newFillerParams = params
-	}
-}
