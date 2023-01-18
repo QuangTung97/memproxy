@@ -94,8 +94,14 @@ func newPropertyTest(maxHashesPerBucket int) *propertyTest {
 		p.addCall("fill-get", key.String())
 		return func() ([]byte, error) {
 			p.addCall("fill-get-func", key.String())
-			p.scannedBuckets[key] = struct{}{}
-			return bucketDataMap[key], nil
+
+			data := bucketDataMap[key]
+
+			if len(data) > 0 {
+				p.scannedBuckets[key] = struct{}{}
+			}
+
+			return data, nil
 		}
 	}
 
@@ -1360,6 +1366,13 @@ func TestHash_PropertyBased__Upsert_Delete_And_Get__Without_Use_Hash_Func(t *tes
 		_, existed := p.scannedBuckets[key]
 		if !existed {
 			t.Fatalf("Invariant Violated: No Delete Completely")
+		}
+	}
+
+	for key := range p.scannedBuckets {
+		_, existed := p.bucketDataMap[key]
+		if !existed {
+			t.Fatalf("Invariant Violated: Scan Too Much")
 		}
 	}
 
