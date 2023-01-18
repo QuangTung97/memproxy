@@ -19,6 +19,8 @@ type propertyTest struct {
 	updater *HashUpdater[customerUsage, customerUsageRootKey, customerUsageKey]
 
 	callOrders []string
+
+	scannedBuckets map[BucketKey[customerUsageRootKey]]emptyStruct
 }
 
 func (p *propertyTest) addCall(op string, key string) {
@@ -50,6 +52,8 @@ func newPropertyTest(maxHashesPerBucket int) *propertyTest {
 
 	p := &propertyTest{
 		callOrders: []string{},
+
+		scannedBuckets: map[BucketKey[customerUsageRootKey]]struct{}{},
 	}
 
 	cas := uint64(5562000)
@@ -90,6 +94,7 @@ func newPropertyTest(maxHashesPerBucket int) *propertyTest {
 		p.addCall("fill-get", key.String())
 		return func() ([]byte, error) {
 			p.addCall("fill-get-func", key.String())
+			p.scannedBuckets[key] = struct{}{}
 			return bucketDataMap[key], nil
 		}
 	}
@@ -1137,7 +1142,7 @@ func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func__Disable_Se
 }
 
 func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func(t *testing.T) {
-	seed := time.Now().Unix()
+	seed := time.Now().UnixNano()
 	fmt.Println("SEED:", seed)
 	rand.Seed(seed)
 
@@ -1226,4 +1231,143 @@ func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func(t *testing.
 	}
 
 	fmt.Println("SEED:", seed)
+}
+
+func TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func__Multi_Times(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		TestHash_PropertyBased__Upsert_And_Get__Without_Using_Hash_Func(t)
+	}
+}
+
+func TestHash_PropertyBased__Upsert_Delete_And_Get__Without_Use_Hash_Func(t *testing.T) {
+	seed := time.Now().UnixNano()
+	fmt.Println("SEED:", seed)
+	rand.Seed(seed)
+
+	maxPerBucket := 2 + rand.Intn(3)
+	fmt.Println("MAX HASHES PER BUCKETS:", maxPerBucket)
+	p := newPropertyTest(maxPerBucket)
+
+	rootKeys := []customerUsageRootKey{
+		{
+			Tenant:     "TENANT01",
+			CampaignID: 141,
+		},
+		{
+			Tenant:     "TENANT02",
+			CampaignID: 142,
+		},
+		{
+			Tenant:     "TENANT03",
+			CampaignID: 143,
+		},
+	}
+
+	var calls []func() error
+
+	type combinedKey struct {
+		rootKey customerUsageRootKey
+		key     customerUsageKey
+	}
+	usageMap := map[combinedKey]customerUsage{}
+
+	const termCode = "TERM01"
+
+	const numKeys = 5000
+
+	var combinedKeys []combinedKey
+
+	randRange := 137 + rand.Intn(400)
+	fmt.Println("RAND RANGE:", randRange)
+
+	for k := 0; k < numKeys; k++ {
+		rootKey := rootKeys[rand.Intn(len(rootKeys))]
+		phone := fmt.Sprintf("0987%06d", rand.Intn(randRange))
+		hashNum := uint64(rand.Intn(randRange))
+
+		usage := customerUsage{
+			Tenant:     rootKey.Tenant,
+			CampaignID: rootKey.CampaignID,
+			Phone:      phone,
+			TermCode:   termCode,
+			Hash:       hashNum,
+		}
+
+		combinedKeys = append(combinedKeys, combinedKey{
+			rootKey: rootKey,
+			key:     usage.getKey(),
+		})
+
+		usageMap[combinedKey{
+			rootKey: usage.getRootKey(),
+			key:     usage.getKey(),
+		}] = usage
+
+		fn := p.updater.UpsertBucket(newContext(), rootKey, usage)
+		calls = append(calls, fn)
+	}
+
+	for k := 0; k < numKeys; k++ {
+		rootKey := rootKeys[rand.Intn(len(rootKeys))]
+		phone := fmt.Sprintf("0987%06d", rand.Intn(randRange))
+		hashNum := uint64(rand.Intn(randRange))
+
+		key := customerUsageKey{
+			Phone:    phone,
+			TermCode: termCode,
+			hash:     hashNum,
+		}
+
+		delete(usageMap, combinedKey{
+			rootKey: rootKey,
+			key:     key,
+		})
+
+		fn := p.updater.DeleteBucket(newContext(), rootKey, key)
+		calls = append(calls, fn)
+	}
+
+	for _, call := range calls {
+		err := call()
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	var resultCalls []func() (Null[customerUsage], error)
+
+	p.scannedBuckets = map[BucketKey[customerUsageRootKey]]struct{}{}
+
+	for _, rootKey := range combinedKeys {
+		fn := p.hash.Get(newContext(), rootKey.rootKey, rootKey.key)
+		resultCalls = append(resultCalls, fn)
+	}
+
+	for i := range resultCalls {
+		call := resultCalls[i]
+		key := combinedKeys[i]
+
+		result, err := call()
+		assert.Equal(t, nil, err)
+
+		expected, ok := usageMap[key]
+
+		assert.Equal(t, ok, result.Valid)
+		assert.Equal(t, expected, result.Data)
+	}
+
+	for key := range p.bucketDataMap {
+		_, existed := p.scannedBuckets[key]
+		if !existed {
+			t.Fatalf("Invariant Violated: No Delete Completely")
+		}
+	}
+
+	fmt.Println("SEED:", seed)
+}
+
+func TestHash_Property_Based__Run_Multi(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		TestHash_PropertyBased__Upsert_Delete_And_Get__Without_Use_Hash_Func(t)
+	}
 }
