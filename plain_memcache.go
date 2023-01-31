@@ -21,10 +21,10 @@ type plainPipelineImpl struct {
 var _ Pipeline = &plainPipelineImpl{}
 
 // NewPlainMemcache a light wrapper around memcached client
-func NewPlainMemcache(client *memcache.Client, leaseDuration uint32) Memcache {
+func NewPlainMemcache(client *memcache.Client, leaseDurationSeconds uint32) Memcache {
 	return &plainMemcacheImpl{
 		client:        client,
-		leaseDuration: leaseDuration,
+		leaseDuration: leaseDurationSeconds,
 	}
 }
 

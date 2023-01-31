@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-//go:generate moq -rm -out memproxy_mocks.go . Memcache Pipeline SessionProvider Session Filler FillerFactory
+//go:generate moq -rm -out memproxy_mocks.go . Memcache Pipeline SessionProvider Session
 
 // Memcache represents a generic Memcache interface
 // implementations of this interface must be thread safe
@@ -22,7 +22,7 @@ type Pipeline interface {
 	Execute()
 	Finish()
 
-	// LowerSession returns the lower priority session
+	// LowerSession returns a lower priority session
 	LowerSession() Session
 }
 
@@ -90,21 +90,6 @@ type DeleteOptions struct {
 
 // DeleteResponse delete response
 type DeleteResponse struct {
-}
-
-// FillResponse fill response
-type FillResponse struct {
-	Data []byte
-}
-
-// FillerFactory must be thread safe
-type FillerFactory interface {
-	New(sess Session, params any) Filler
-}
-
-// Filler for filling memcache contents, implementation of this interface NOT need to be thread safe
-type Filler interface {
-	Fill(ctx context.Context, params any, completeFn func(resp FillResponse, err error))
 }
 
 type pipelineOptions struct {
