@@ -229,3 +229,8 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 		return resp, callCtx.err
 	}
 }
+
+// Reset calls item.Reset
+func (h *Hash[T, R, K]) Reset() {
+	h.bucketItem.Reset()
+}

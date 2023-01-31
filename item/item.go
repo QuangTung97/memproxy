@@ -83,16 +83,21 @@ func New[T Value, K Key](
 
 		unmarshaler: unmarshaler,
 		filler:      filler,
+
+		getKeys: map[K]getResultType[T]{},
 	}
 }
 
-// Item ...
+// Item is NOT thread safe and, it contains a cached keys
+// once a key is cached in memory, it will return the same value unless call **Reset**
 type Item[T Value, K Key] struct {
 	options     *itemOptions
 	sess        memproxy.Session
 	pipeline    memproxy.Pipeline
 	unmarshaler Unmarshaler[T]
 	filler      Filler[T, K]
+
+	getKeys map[K]getResultType[T]
 }
 
 type getResultType[T any] struct {
@@ -101,23 +106,25 @@ type getResultType[T any] struct {
 }
 
 func (i *Item[T, K]) handleLeaseGranted(
-	ctx context.Context, key K, result *getResultType[T],
+	ctx context.Context, key K,
+	setError func(err error),
+	setResponse func(resp T),
 	keyStr string, cas uint64,
 ) {
 	fillFn := i.filler(ctx, key)
 	i.sess.AddNextCall(func() {
 		fillResp, err := fillFn()
 		if err != nil {
-			result.err = err
+			setError(err)
 			return
 		}
 
-		result.resp = fillResp
 		data, err := fillResp.Marshal()
 		if err != nil {
-			result.err = err
+			setError(err)
 			return
 		}
+		setResponse(fillResp)
 
 		i.pipeline.LeaseSet(keyStr, data, cas, memproxy.LeaseSetOptions{})
 	})
@@ -127,37 +134,65 @@ func (i *Item[T, K]) handleLeaseGranted(
 func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 	keyStr := key.String()
 
-	// TODO Deduplicate Key
+	returnFn := func() (T, error) {
+		i.sess.Execute()
+
+		result := i.getKeys[key]
+		return result.resp, result.err
+	}
+
+	_, existed := i.getKeys[key]
+	if existed {
+		return returnFn
+	}
+	i.getKeys[key] = getResultType[T]{}
+
+	retryCount := 0
 
 	leaseGetFn := i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
 
-	var result getResultType[T]
 	var nextFn func()
-	retryCount := 0
+
+	setError := func(err error) {
+		i.getKeys[key] = getResultType[T]{
+			err: err,
+		}
+	}
+
+	setResponse := func(resp T) {
+		i.getKeys[key] = getResultType[T]{
+			resp: resp,
+		}
+	}
 
 	nextFn = func() {
 		leaseGetResp, err := leaseGetFn()
 		if err != nil {
-			result.err = err
+			setError(err)
 			return
 		}
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusFound {
-			result.resp, err = i.unmarshaler(leaseGetResp.Data)
+			resp, err := i.unmarshaler(leaseGetResp.Data)
 			if err != nil {
-				result.err = err
+				setError(err)
+				return
 			}
+			setResponse(resp)
 			return
 		}
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseGranted {
-			i.handleLeaseGranted(ctx, key, &result, keyStr, leaseGetResp.CAS)
+			i.handleLeaseGranted(ctx, key,
+				setError, setResponse,
+				keyStr, leaseGetResp.CAS,
+			)
 			return
 		}
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseRejected {
 			if retryCount >= len(i.options.sleepDurations) {
-				result.err = ErrExceededRejectRetryLimit
+				setError(ErrExceededRejectRetryLimit)
 				return
 			}
 
@@ -170,18 +205,20 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 			return
 		}
 
-		result.err = ErrInvalidLeaseGetStatus
+		setError(ErrInvalidLeaseGetStatus)
 	}
 
 	i.sess.AddNextCall(nextFn)
 
-	return func() (T, error) {
-		i.sess.Execute()
-		return result.resp, result.err
-	}
+	return returnFn
 }
 
 // LowerSession ...
 func (i *Item[T, K]) LowerSession() memproxy.Session {
 	return i.sess.GetLower()
+}
+
+// Reset clear in-memory cached values
+func (i *Item[T, K]) Reset() {
+	i.getKeys = map[K]getResultType[T]{}
 }
