@@ -8,10 +8,12 @@ require (
 	github.com/mgechev/revive v1.2.4
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/stretchr/testify v1.8.1
+	golang.org/x/perf v0.0.0-20230113213139-801c7ef9e5c5
 )
 
 require (
 	github.com/BurntSushi/toml v1.2.0 // indirect
+	github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794 // indirect
 	github.com/chavacava/garif v0.0.0-20220630083739-93517212f375 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fatih/color v1.13.0 // indirect

@@ -1,4 +1,4 @@
-.PHONY: lint install-tools test test-race coverage benchmark
+.PHONY: lint install-tools test test-race coverage benchmark compare new_to_old
 
 lint:
 	go fmt ./...
@@ -14,9 +14,16 @@ test-race:
 install-tools:
 	go install github.com/matryer/moq
 	go install github.com/mgechev/revive
+	go install golang.org/x/perf/cmd/benchstat
 
 coverage:
 	go tool cover -func coverage.out | grep ^total
 
 benchmark:
-	go test -bench=. ./...
+	go test -run="^Benchmark" -bench=. -count=20 ./... > benchmark_new.txt
+
+compare:
+	benchstat benchmark_old.txt benchmark_new.txt
+
+new_to_old:
+	mv benchmark_new.txt benchmark_old.txt

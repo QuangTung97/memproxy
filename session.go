@@ -9,7 +9,7 @@ type sessionProviderImpl struct {
 
 var _ SessionProvider = &sessionProviderImpl{}
 
-// NewSessionProvider ...
+// NewSessionProvider is THREAD SAFE
 func NewSessionProvider(
 	nowFn func() time.Time,
 	sleepFn func(d time.Duration),
@@ -20,7 +20,7 @@ func NewSessionProvider(
 	}
 }
 
-// New ...
+// New a Session, NOT a Thread Safe Object
 func (p *sessionProviderImpl) New() Session {
 	return newSession(p, nil)
 }
