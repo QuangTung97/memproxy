@@ -7,6 +7,7 @@ import (
 	"github.com/QuangTung97/memproxy"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 type userValue struct {
@@ -54,6 +55,7 @@ func newTestError() error {
 }
 
 type itemTest struct {
+	sess *memproxy.SessionMock
 	pipe *memproxy.PipelineMock
 
 	fillCalls int
@@ -61,14 +63,33 @@ type itemTest struct {
 	fillFunc  Filler[userValue, userKey]
 
 	item *Item[userValue, userKey]
+
+	delayCalls []time.Duration
 }
 
 func newItemTest() *itemTest {
+	return newItemTestWithSleepDurations(DefaultSleepDurations())
+}
+
+func newItemTestWithSleepDurations(sleepDurations []time.Duration) *itemTest {
 	sess := &memproxy.SessionMock{}
 	pipe := &memproxy.PipelineMock{}
 
+	i := &itemTest{
+		fillFunc: func(ctx context.Context, key userKey) func() (userValue, error) {
+			return func() (userValue, error) {
+				return userValue{}, nil
+			}
+		},
+	}
+
 	var calls []func()
+
 	sess.AddNextCallFunc = func(fn func()) {
+		calls = append(calls, fn)
+	}
+	sess.AddDelayedCallFunc = func(d time.Duration, fn func()) {
+		i.delayCalls = append(i.delayCalls, d)
 		calls = append(calls, fn)
 	}
 	sess.ExecuteFunc = func() {
@@ -85,14 +106,8 @@ func newItemTest() *itemTest {
 		return sess
 	}
 
-	i := &itemTest{
-		pipe: pipe,
-		fillFunc: func(ctx context.Context, key userKey) func() (userValue, error) {
-			return func() (userValue, error) {
-				return userValue{}, nil
-			}
-		},
-	}
+	i.sess = sess
+	i.pipe = pipe
 
 	var userFiller Filler[userValue, userKey] = func(ctx context.Context, key userKey) func() (userValue, error) {
 		i.fillCalls++
@@ -100,7 +115,7 @@ func newItemTest() *itemTest {
 		return i.fillFunc(ctx, key)
 	}
 
-	i.item = New(pipe, unmarshalUser, userFiller)
+	i.item = New(pipe, unmarshalUser, userFiller, WithSleepDurations(sleepDurations...))
 
 	// stubbing
 	i.stubLeaseSet()
@@ -114,6 +129,17 @@ func (i *itemTest) stubLeaseGet(resp memproxy.LeaseGetResponse, err error) {
 	) func() (memproxy.LeaseGetResponse, error) {
 		return func() (memproxy.LeaseGetResponse, error) {
 			return resp, err
+		}
+	}
+}
+
+func (i *itemTest) stubLeaseGetMulti(respList ...memproxy.LeaseGetResponse) {
+	i.pipe.LeaseGetFunc = func(
+		key string, options memproxy.LeaseGetOptions,
+	) func() (memproxy.LeaseGetResponse, error) {
+		index := len(i.pipe.LeaseGetCalls()) - 1
+		return func() (memproxy.LeaseGetResponse, error) {
+			return respList[index], nil
 		}
 	}
 }
@@ -140,7 +166,16 @@ func TestItem(t *testing.T) {
 	t.Run("call-lease-get", func(t *testing.T) {
 		i := newItemTest()
 
-		i.stubLeaseGet(memproxy.LeaseGetResponse{}, nil)
+		user := userValue{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+			Age:    88,
+		}
+
+		i.stubLeaseGet(memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusFound,
+			Data:   mustMarshalUser(user),
+		}, nil)
 
 		i.item.Get(newContext(), userKey{
 			Tenant: "TENANT01",
@@ -234,5 +269,170 @@ func TestItem(t *testing.T) {
 		assert.Equal(t, "TENANT01:USER01", setCalls[0].Key)
 		assert.Equal(t, uint64(cas), setCalls[0].Cas)
 		assert.Equal(t, mustMarshalUser(user), setCalls[0].Data)
+	})
+}
+
+func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
+	t.Run("lease-rejected-second-lease-get-found", func(t *testing.T) {
+		i := newItemTestWithSleepDurations([]time.Duration{
+			3 * time.Millisecond,
+			7 * time.Millisecond,
+			13 * time.Millisecond,
+		})
+
+		user := userValue{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+			Age:    88,
+		}
+
+		i.stubLeaseGetMulti(
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusFound,
+				Data:   mustMarshalUser(user),
+			},
+		)
+
+		fn := i.item.Get(newContext(), userKey{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+		})
+		result, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user, result)
+
+		calls := i.pipe.LeaseGetCalls()
+
+		assert.Equal(t, 2, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+		assert.Equal(t, "TENANT01:USER01", calls[1].Key)
+
+		assert.Equal(t, []time.Duration{
+			3 * time.Millisecond,
+		}, i.delayCalls)
+	})
+
+	t.Run("lease-rejected-multi-times", func(t *testing.T) {
+		i := newItemTestWithSleepDurations([]time.Duration{
+			3 * time.Millisecond,
+			7 * time.Millisecond,
+			13 * time.Millisecond,
+		})
+
+		user := userValue{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+			Age:    88,
+		}
+
+		i.stubLeaseGetMulti(
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusFound,
+				Data:   mustMarshalUser(user),
+			},
+		)
+
+		fn := i.item.Get(newContext(), userKey{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+		})
+
+		result, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user, result)
+
+		calls := i.pipe.LeaseGetCalls()
+
+		assert.Equal(t, 4, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+		assert.Equal(t, "TENANT01:USER01", calls[1].Key)
+		assert.Equal(t, "TENANT01:USER01", calls[3].Key)
+
+		assert.Equal(t, []time.Duration{
+			3 * time.Millisecond,
+			7 * time.Millisecond,
+			13 * time.Millisecond,
+		}, i.delayCalls)
+	})
+
+	t.Run("lease-rejected-exceed-max-number-of-times", func(t *testing.T) {
+		i := newItemTestWithSleepDurations([]time.Duration{
+			3 * time.Millisecond,
+			7 * time.Millisecond,
+			13 * time.Millisecond,
+		})
+
+		i.stubLeaseGetMulti(
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+			},
+		)
+
+		fn := i.item.Get(newContext(), userKey{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+		})
+
+		result, err := fn()
+		assert.Equal(t, ErrExceededRejectRetryLimit, err)
+		assert.Equal(t, userValue{}, result)
+
+		calls := i.pipe.LeaseGetCalls()
+
+		assert.Equal(t, 4, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+		assert.Equal(t, "TENANT01:USER01", calls[1].Key)
+		assert.Equal(t, "TENANT01:USER01", calls[3].Key)
+
+		assert.Equal(t, []time.Duration{
+			3 * time.Millisecond,
+			7 * time.Millisecond,
+			13 * time.Millisecond,
+		}, i.delayCalls)
+	})
+
+	t.Run("error-when-lease-get-status-invalid", func(t *testing.T) {
+		i := newItemTest()
+
+		i.stubLeaseGetMulti(
+			memproxy.LeaseGetResponse{},
+		)
+
+		fn := i.item.Get(newContext(), userKey{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+		})
+
+		result, err := fn()
+		assert.Equal(t, ErrInvalidLeaseGetStatus, err)
+		assert.Equal(t, userValue{}, result)
+
+		calls := i.pipe.LeaseGetCalls()
+
+		assert.Equal(t, 1, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+
+		assert.Equal(t, 0, len(i.delayCalls))
 	})
 }
