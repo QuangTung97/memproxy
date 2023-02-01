@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/mocks"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -68,7 +69,7 @@ func (c customerUsageKey) Hash() uint64 {
 }
 
 type hashTest struct {
-	pipe *memproxy.PipelineMock
+	pipe *mocks.PipelineMock
 	hash *Hash[customerUsage, customerUsageRootKey, customerUsageKey]
 
 	fillerFunc     Filler[customerUsageRootKey]
@@ -82,7 +83,7 @@ func newFakeSession() memproxy.Session {
 
 func newHashTest() *hashTest {
 	sess := newFakeSession()
-	pipe := &memproxy.PipelineMock{}
+	pipe := &mocks.PipelineMock{}
 	pipe.LowerSessionFunc = func() memproxy.Session {
 		return sess
 	}

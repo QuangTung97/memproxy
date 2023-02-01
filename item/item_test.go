@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/mocks"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
@@ -55,8 +56,8 @@ func newTestError() error {
 }
 
 type itemTest struct {
-	sess *memproxy.SessionMock
-	pipe *memproxy.PipelineMock
+	sess *mocks.SessionMock
+	pipe *mocks.PipelineMock
 
 	fillCalls int
 	fillKeys  []userKey
@@ -94,8 +95,8 @@ func newItemTest() *itemTest {
 }
 
 func newItemTestWithSleepDurations(sleepDurations []time.Duration) *itemTest {
-	sess := &memproxy.SessionMock{}
-	pipe := &memproxy.PipelineMock{}
+	sess := &mocks.SessionMock{}
+	pipe := &mocks.PipelineMock{}
 
 	i := &itemTest{
 		fillFunc: func(ctx context.Context, key userKey) func() (userValue, error) {

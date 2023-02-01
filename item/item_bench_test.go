@@ -6,6 +6,7 @@ import (
 	"github.com/QuangTung97/go-memcache/memcache"
 	"github.com/QuangTung97/memproxy"
 	"github.com/stretchr/testify/assert"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -158,4 +159,17 @@ func BenchmarkItemGetByBatch1000(b *testing.B) {
 
 func BenchmarkItemGetByBatch100(b *testing.B) {
 	benchmarkWithBatch(b, 100) // => 348K / seconds
+}
+
+func BenchmarkHeapAlloc(b *testing.B) {
+	count := uint64(0)
+	var last any
+	for n := 0; n < b.N; n++ {
+		x := make([]byte, 128)
+		var v any = x
+		v.([]byte)[0] = uint8(count)
+		count += uint64(x[0])
+		last = x
+	}
+	runtime.KeepAlive(last)
 }

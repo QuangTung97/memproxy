@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-//go:generate moq -rm -out memproxy_mocks.go . Memcache Pipeline SessionProvider Session
-
 // Memcache represents a generic Memcache interface
 // implementations of this interface must be thread safe
 type Memcache interface {

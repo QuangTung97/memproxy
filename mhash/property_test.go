@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/mocks"
 	"github.com/spaolacci/murmur3"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
@@ -48,7 +49,7 @@ func (p *propertyTest) getBucketDataList() []BucketData[customerUsageRootKey] {
 
 func newPropertyTest(maxHashesPerBucket int) *propertyTest {
 	sess := newFakeSession()
-	pipe := &memproxy.PipelineMock{}
+	pipe := &mocks.PipelineMock{}
 
 	p := &propertyTest{
 		callOrders: []string{},
