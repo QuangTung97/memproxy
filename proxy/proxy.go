@@ -40,7 +40,8 @@ type Pipeline struct {
 	sess        memproxy.Session
 	pipeSession memproxy.Session
 
-	pipelines map[ServerID]memproxy.Pipeline
+	pipelines       map[ServerID]memproxy.Pipeline
+	leaseSetServers map[string]ServerID
 
 	failedServers []ServerID
 }
@@ -56,7 +57,8 @@ func (m *Memcache) Pipeline(
 		pipeSession: sess,
 		sess:        sess.GetLower(),
 
-		pipelines: map[ServerID]memproxy.Pipeline{},
+		pipelines:       map[ServerID]memproxy.Pipeline{},
+		leaseSetServers: map[string]ServerID{},
 	}
 }
 
@@ -94,14 +96,22 @@ func (p *Pipeline) LeaseGet(
 		resp, err = fn()
 		if err != nil {
 			p.failedServers = append(p.failedServers, serverID)
-			newServerID := p.client.route.SelectServer(key, p.failedServers)
+			serverID = p.client.route.SelectServer(key, p.failedServers)
 
-			pipe := p.getRoutePipeline(newServerID)
+			pipe := p.getRoutePipeline(serverID)
 			fn = pipe.LeaseGet(key, options)
 
 			p.sess.AddNextCall(func() {
 				resp, err = fn()
+				if err == nil && resp.Status == memproxy.LeaseGetStatusLeaseGranted {
+					p.leaseSetServers[key] = serverID
+				}
 			})
+			return
+		}
+
+		if resp.Status == memproxy.LeaseGetStatusLeaseGranted {
+			p.leaseSetServers[key] = serverID
 		}
 	})
 
@@ -112,13 +122,18 @@ func (p *Pipeline) LeaseGet(
 }
 
 // LeaseSet ...
-func (*Pipeline) LeaseSet(
-	string, []byte, uint64,
-	memproxy.LeaseSetOptions,
+func (p *Pipeline) LeaseSet(
+	key string, data []byte, cas uint64,
+	options memproxy.LeaseSetOptions,
 ) func() (memproxy.LeaseSetResponse, error) {
-	return func() (memproxy.LeaseSetResponse, error) {
-		return memproxy.LeaseSetResponse{}, nil
+	serverID, ok := p.leaseSetServers[key]
+	if !ok {
+		return func() (memproxy.LeaseSetResponse, error) {
+			return memproxy.LeaseSetResponse{}, nil
+		}
 	}
+	pipe := p.getRoutePipeline(serverID)
+	return pipe.LeaseSet(key, data, cas, options)
 }
 
 // Delete ...

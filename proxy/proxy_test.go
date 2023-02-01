@@ -123,6 +123,16 @@ func (p *pipelineTest) stubLeaseGet2(resp memproxy.LeaseGetResponse, err error) 
 	}
 }
 
+func (p *pipelineTest) stubLeaseSet1(resp memproxy.LeaseSetResponse, err error) {
+	p.pipe1.LeaseSetFunc = func(
+		key string, data []byte, cas uint64, options memproxy.LeaseSetOptions,
+	) func() (memproxy.LeaseSetResponse, error) {
+		return func() (memproxy.LeaseSetResponse, error) {
+			return resp, err
+		}
+	}
+}
+
 func TestPipeline(t *testing.T) {
 	t.Run("call-select-server", func(t *testing.T) {
 		p := newPipelineTest(t)
@@ -222,5 +232,56 @@ func TestPipeline(t *testing.T) {
 		pipeCalls := p.mc1.PipelineCalls()
 		assert.Equal(t, 1, len(pipeCalls))
 		assert.Equal(t, newContext(), pipeCalls[0].Ctx)
+	})
+}
+
+func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
+	t.Run("lease-get-then-set-no-fallback-on-error", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		p.stubSelect(serverID1)
+		p.stubLeaseGet1(memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    2255,
+		}, nil)
+
+		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+		resp, err := fn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    2255,
+		}, resp)
+
+		// Do Lease Set
+		p.stubLeaseSet1(memproxy.LeaseSetResponse{}, nil)
+
+		setFn := p.pipe.LeaseSet("KEY01", []byte("set data 01"), 2255, memproxy.LeaseSetOptions{})
+		setResp, err := setFn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseSetResponse{}, setResp)
+
+		setCalls := p.pipe1.LeaseSetCalls()
+		assert.Equal(t, 1, len(setCalls))
+		assert.Equal(t, "KEY01", setCalls[0].Key)
+		assert.Equal(t, uint64(2255), setCalls[0].Cas)
+		assert.Equal(t, []byte("set data 01"), setCalls[0].Data)
+	})
+
+	t.Run("lease-set-without-lease-get--do-nothing", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		p.stubLeaseSet1(memproxy.LeaseSetResponse{}, nil)
+
+		setFn := p.pipe.LeaseSet("KEY01", []byte("set data 01"), 2255, memproxy.LeaseSetOptions{})
+		setResp, err := setFn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseSetResponse{}, setResp)
+
+		setCalls := p.pipe1.LeaseSetCalls()
+		assert.Equal(t, 0, len(setCalls))
 	})
 }
