@@ -63,7 +63,7 @@ func WithSleepDurations(durations ...time.Duration) Option {
 	}
 }
 
-// ErrExceededRejectRetryLimit ...
+// ErrExceededRejectRetryLimit TODO Remove this error
 var ErrExceededRejectRetryLimit = errors.New("item: exceeded lease rejected retry limit")
 
 // ErrInvalidLeaseGetStatus ...

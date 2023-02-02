@@ -42,7 +42,12 @@ type Pipeline struct {
 	sess        memproxy.Session
 	pipeSession memproxy.Session
 
-	pipelines       map[ServerID]memproxy.Pipeline
+	pipelines map[ServerID]memproxy.Pipeline
+
+	needFlushServers []ServerID
+	//revive:disable-next-line:nested-structs
+	needFlushSet map[ServerID]struct{}
+
 	leaseSetServers map[string]ServerID
 }
 
@@ -59,7 +64,8 @@ func (m *Memcache) Pipeline(
 		pipeSession: sess,
 		sess:        sess.GetLower(),
 
-		pipelines:       map[ServerID]memproxy.Pipeline{},
+		pipelines: map[ServerID]memproxy.Pipeline{},
+
 		leaseSetServers: map[string]ServerID{},
 	}
 }
@@ -79,7 +85,27 @@ func (p *Pipeline) getRoutePipeline(serverID ServerID) memproxy.Pipeline {
 		pipe = p.client.clients[serverID].Pipeline(p.ctx, p.pipeSession)
 		p.pipelines[serverID] = pipe
 	}
+
+	if p.needFlushSet == nil {
+		p.needFlushSet = map[ServerID]struct{}{
+			serverID: {},
+		}
+		p.needFlushServers = append(p.needFlushServers, serverID)
+	} else if _, existed := p.needFlushSet[serverID]; !existed {
+		p.needFlushSet[serverID] = struct{}{}
+		p.needFlushServers = append(p.needFlushServers, serverID)
+	}
+
 	return pipe
+}
+
+func (p *Pipeline) doExecuteForAllServers() {
+	for _, server := range p.needFlushServers {
+		pipe := p.pipelines[server]
+		pipe.Execute()
+	}
+	p.needFlushServers = nil
+	p.needFlushSet = nil
 }
 
 // LeaseGet ...
@@ -87,15 +113,17 @@ func (p *Pipeline) LeaseGet(
 	key string, options memproxy.LeaseGetOptions,
 ) func() (memproxy.LeaseGetResponse, error) {
 	serverID := p.selector.SelectServer(key)
-	pipe := p.getRoutePipeline(serverID)
 
+	pipe := p.getRoutePipeline(serverID)
 	fn := pipe.LeaseGet(key, options)
 
 	var resp memproxy.LeaseGetResponse
 	var err error
 
 	p.sess.AddNextCall(func() {
+		p.doExecuteForAllServers()
 		resp, err = fn()
+
 		if err != nil {
 			p.selector.SetFailedServer(serverID)
 			if !p.selector.HasNextAvailableServer() {
@@ -108,7 +136,9 @@ func (p *Pipeline) LeaseGet(
 			fn = pipe.LeaseGet(key, options)
 
 			p.sess.AddNextCall(func() {
+				p.doExecuteForAllServers()
 				resp, err = fn()
+
 				if err == nil && resp.Status == memproxy.LeaseGetStatusLeaseGranted {
 					p.leaseSetServers[key] = serverID
 				}
@@ -122,7 +152,6 @@ func (p *Pipeline) LeaseGet(
 	})
 
 	return func() (memproxy.LeaseGetResponse, error) {
-		// TODO Do Execute Flush Commands
 		p.sess.Execute()
 		p.selector.Reset()
 		return resp, err

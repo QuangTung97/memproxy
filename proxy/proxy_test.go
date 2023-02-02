@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/mocks"
 	"github.com/stretchr/testify/assert"
@@ -21,6 +22,32 @@ type pipelineTest struct {
 	route    *RouteMock
 	selector *SelectorMock
 	pipe     memproxy.Pipeline
+
+	actions []string
+}
+
+func leaseGetAction(key string) string {
+	return fmt.Sprintf("lease-get: %s", key)
+}
+
+func leaseGetFuncAction(key string) string {
+	return fmt.Sprintf("lease-get-func: %s", key)
+}
+
+func pipelineExecuteAction(server ServerID) string {
+	return fmt.Sprintf("pipe-exec: %d", server)
+}
+
+func leaseSetAction(key string) string {
+	return fmt.Sprintf("lease-set: %s", key)
+}
+
+func leaseSetFuncAction(key string) string {
+	return fmt.Sprintf("lease-set-func: %s", key)
+}
+
+func (p *pipelineTest) appendAction(s string) {
+	p.actions = append(p.actions, s)
 }
 
 const serverID1 ServerID = 31
@@ -44,8 +71,16 @@ func newPipelineTest(t *testing.T) *pipelineTest {
 	p.mc1 = mc1
 	p.mc2 = mc2
 
-	p.pipe1 = &mocks.PipelineMock{}
-	p.pipe2 = &mocks.PipelineMock{}
+	p.pipe1 = &mocks.PipelineMock{
+		ExecuteFunc: func() {
+			p.appendAction(pipelineExecuteAction(serverID1))
+		},
+	}
+	p.pipe2 = &mocks.PipelineMock{
+		ExecuteFunc: func() {
+			p.appendAction(pipelineExecuteAction(serverID2))
+		},
+	}
 
 	p.mc1.PipelineFunc = func(
 		ctx context.Context, sess memproxy.Session, options ...memproxy.PipelineOption,
@@ -120,44 +155,47 @@ func (p *pipelineTest) stubHasNextAvail(hasNext bool) {
 	}
 }
 
-func (p *pipelineTest) stubLeaseGet1(resp memproxy.LeaseGetResponse, err error) {
-	p.pipe1.LeaseGetFunc = func(
+func (p *pipelineTest) stubPipeLeaseGet(pipe *mocks.PipelineMock, resp memproxy.LeaseGetResponse, err error) {
+	pipe.LeaseGetFunc = func(
 		key string, options memproxy.LeaseGetOptions,
 	) func() (memproxy.LeaseGetResponse, error) {
+		p.appendAction(leaseGetAction(key))
 		return func() (memproxy.LeaseGetResponse, error) {
+			p.appendAction(leaseGetFuncAction(key))
 			return resp, err
 		}
 	}
 }
 
+func (p *pipelineTest) stubLeaseGet1(resp memproxy.LeaseGetResponse, err error) {
+	p.stubPipeLeaseGet(p.pipe1, resp, err)
+}
+
 func (p *pipelineTest) stubLeaseGet2(resp memproxy.LeaseGetResponse, err error) {
-	p.pipe2.LeaseGetFunc = func(
-		key string, options memproxy.LeaseGetOptions,
-	) func() (memproxy.LeaseGetResponse, error) {
-		return func() (memproxy.LeaseGetResponse, error) {
+	p.stubPipeLeaseGet(p.pipe2, resp, err)
+}
+
+func (p *pipelineTest) stubPipeLeaseSet(
+	pipe *mocks.PipelineMock,
+	resp memproxy.LeaseSetResponse, err error,
+) {
+	pipe.LeaseSetFunc = func(
+		key string, data []byte, cas uint64, options memproxy.LeaseSetOptions,
+	) func() (memproxy.LeaseSetResponse, error) {
+		p.appendAction(leaseSetAction(key))
+		return func() (memproxy.LeaseSetResponse, error) {
+			p.appendAction(leaseSetFuncAction(key))
 			return resp, err
 		}
 	}
 }
 
 func (p *pipelineTest) stubLeaseSet1(resp memproxy.LeaseSetResponse, err error) {
-	p.pipe1.LeaseSetFunc = func(
-		key string, data []byte, cas uint64, options memproxy.LeaseSetOptions,
-	) func() (memproxy.LeaseSetResponse, error) {
-		return func() (memproxy.LeaseSetResponse, error) {
-			return resp, err
-		}
-	}
+	p.stubPipeLeaseSet(p.pipe1, resp, err)
 }
 
 func (p *pipelineTest) stubLeaseSet2(resp memproxy.LeaseSetResponse, err error) {
-	p.pipe2.LeaseSetFunc = func(
-		key string, data []byte, cas uint64, options memproxy.LeaseSetOptions,
-	) func() (memproxy.LeaseSetResponse, error) {
-		return func() (memproxy.LeaseSetResponse, error) {
-			return resp, err
-		}
-	}
+	p.stubPipeLeaseSet(p.pipe2, resp, err)
 }
 
 func TestPipeline(t *testing.T) {
@@ -221,6 +259,7 @@ func TestPipeline(t *testing.T) {
 		}, resp)
 
 		assert.Equal(t, 1, len(p.selector.ResetCalls()))
+		assert.Equal(t, 1, len(p.pipe1.ExecuteCalls()))
 	})
 
 	t.Run("lease-get-with-error-retry-on-other-server", func(t *testing.T) {
@@ -383,5 +422,67 @@ func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
 		assert.Equal(t, "KEY01", setCalls[0].Key)
 		assert.Equal(t, uint64(2255), setCalls[0].Cas)
 		assert.Equal(t, []byte("set data 01"), setCalls[0].Data)
+
+		// Check Action
+		assert.Equal(t, []string{
+			leaseGetAction("KEY01"),
+			pipelineExecuteAction(serverID1),
+			leaseGetFuncAction("KEY01"),
+
+			leaseGetAction("KEY01"),
+			pipelineExecuteAction(serverID2),
+			leaseGetFuncAction("KEY01"),
+
+			leaseSetAction("KEY01"),
+			leaseSetFuncAction("KEY01"),
+		}, p.actions)
+	})
+}
+
+func TestPipeline__LeaseGet_Multi(t *testing.T) {
+	t.Run("get-multi-and-execute-multi", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		p.stubSelect(serverID1, serverID2)
+
+		p.stubLeaseGet1(memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    2255,
+		}, nil)
+		p.stubLeaseGet2(memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    2266,
+		}, nil)
+
+		fn1 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+		fn2 := p.pipe.LeaseGet("KEY02", memproxy.LeaseGetOptions{})
+
+		resp, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    2255,
+		}, resp)
+
+		resp, err = fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    2266,
+		}, resp)
+
+		selectCalls := p.selector.SelectServerCalls()
+		assert.Equal(t, 2, len(selectCalls))
+		assert.Equal(t, "KEY01", selectCalls[0].Key)
+		assert.Equal(t, "KEY02", selectCalls[1].Key)
+
+		assert.Equal(t, []string{
+			leaseGetAction("KEY01"),
+			leaseGetAction("KEY02"),
+			pipelineExecuteAction(serverID1),
+			pipelineExecuteAction(serverID2),
+			leaseGetFuncAction("KEY01"),
+			leaseGetFuncAction("KEY02"),
+		}, p.actions)
 	})
 }
