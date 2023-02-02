@@ -17,8 +17,8 @@ var _ Route = &RouteMock{}
 //
 //		// make and configure a mocked Route
 //		mockedRoute := &RouteMock{
-//			SelectServerFunc: func(key string, failedServers []ServerID) ServerID {
-//				panic("mock out the SelectServer method")
+//			NewSelectorFunc: func() Selector {
+//				panic("mock out the NewSelector method")
 //			},
 //		}
 //
@@ -27,54 +27,232 @@ var _ Route = &RouteMock{}
 //
 //	}
 type RouteMock struct {
-	// SelectServerFunc mocks the SelectServer method.
-	SelectServerFunc func(key string, failedServers []ServerID) ServerID
+	// NewSelectorFunc mocks the NewSelector method.
+	NewSelectorFunc func() Selector
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// NewSelector holds details about calls to the NewSelector method.
+		NewSelector []struct {
+		}
+	}
+	lockNewSelector sync.RWMutex
+}
+
+// NewSelector calls NewSelectorFunc.
+func (mock *RouteMock) NewSelector() Selector {
+	if mock.NewSelectorFunc == nil {
+		panic("RouteMock.NewSelectorFunc: method is nil but Route.NewSelector was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockNewSelector.Lock()
+	mock.calls.NewSelector = append(mock.calls.NewSelector, callInfo)
+	mock.lockNewSelector.Unlock()
+	return mock.NewSelectorFunc()
+}
+
+// NewSelectorCalls gets all the calls that were made to NewSelector.
+// Check the length with:
+//
+//	len(mockedRoute.NewSelectorCalls())
+func (mock *RouteMock) NewSelectorCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockNewSelector.RLock()
+	calls = mock.calls.NewSelector
+	mock.lockNewSelector.RUnlock()
+	return calls
+}
+
+// Ensure, that SelectorMock does implement Selector.
+// If this is not the case, regenerate this file with moq.
+var _ Selector = &SelectorMock{}
+
+// SelectorMock is a mock implementation of Selector.
+//
+//	func TestSomethingThatUsesSelector(t *testing.T) {
+//
+//		// make and configure a mocked Selector
+//		mockedSelector := &SelectorMock{
+//			HasNextAvailableServerFunc: func() bool {
+//				panic("mock out the HasNextAvailableServer method")
+//			},
+//			SelectForDeleteFunc: func(key string) []ServerID {
+//				panic("mock out the SelectForDelete method")
+//			},
+//			SelectServerFunc: func(key string) ServerID {
+//				panic("mock out the SelectServer method")
+//			},
+//			SetFailedServerFunc: func(server ServerID)  {
+//				panic("mock out the SetFailedServer method")
+//			},
+//		}
+//
+//		// use mockedSelector in code that requires Selector
+//		// and then make assertions.
+//
+//	}
+type SelectorMock struct {
+	// HasNextAvailableServerFunc mocks the HasNextAvailableServer method.
+	HasNextAvailableServerFunc func() bool
+
+	// SelectForDeleteFunc mocks the SelectForDelete method.
+	SelectForDeleteFunc func(key string) []ServerID
+
+	// SelectServerFunc mocks the SelectServer method.
+	SelectServerFunc func(key string) ServerID
+
+	// SetFailedServerFunc mocks the SetFailedServer method.
+	SetFailedServerFunc func(server ServerID)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// HasNextAvailableServer holds details about calls to the HasNextAvailableServer method.
+		HasNextAvailableServer []struct {
+		}
+		// SelectForDelete holds details about calls to the SelectForDelete method.
+		SelectForDelete []struct {
+			// Key is the key argument value.
+			Key string
+		}
 		// SelectServer holds details about calls to the SelectServer method.
 		SelectServer []struct {
 			// Key is the key argument value.
 			Key string
-			// FailedServers is the failedServers argument value.
-			FailedServers []ServerID
+		}
+		// SetFailedServer holds details about calls to the SetFailedServer method.
+		SetFailedServer []struct {
+			// Server is the server argument value.
+			Server ServerID
 		}
 	}
-	lockSelectServer sync.RWMutex
+	lockHasNextAvailableServer sync.RWMutex
+	lockSelectForDelete        sync.RWMutex
+	lockSelectServer           sync.RWMutex
+	lockSetFailedServer        sync.RWMutex
+}
+
+// HasNextAvailableServer calls HasNextAvailableServerFunc.
+func (mock *SelectorMock) HasNextAvailableServer() bool {
+	if mock.HasNextAvailableServerFunc == nil {
+		panic("SelectorMock.HasNextAvailableServerFunc: method is nil but Selector.HasNextAvailableServer was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockHasNextAvailableServer.Lock()
+	mock.calls.HasNextAvailableServer = append(mock.calls.HasNextAvailableServer, callInfo)
+	mock.lockHasNextAvailableServer.Unlock()
+	return mock.HasNextAvailableServerFunc()
+}
+
+// HasNextAvailableServerCalls gets all the calls that were made to HasNextAvailableServer.
+// Check the length with:
+//
+//	len(mockedSelector.HasNextAvailableServerCalls())
+func (mock *SelectorMock) HasNextAvailableServerCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockHasNextAvailableServer.RLock()
+	calls = mock.calls.HasNextAvailableServer
+	mock.lockHasNextAvailableServer.RUnlock()
+	return calls
+}
+
+// SelectForDelete calls SelectForDeleteFunc.
+func (mock *SelectorMock) SelectForDelete(key string) []ServerID {
+	if mock.SelectForDeleteFunc == nil {
+		panic("SelectorMock.SelectForDeleteFunc: method is nil but Selector.SelectForDelete was just called")
+	}
+	callInfo := struct {
+		Key string
+	}{
+		Key: key,
+	}
+	mock.lockSelectForDelete.Lock()
+	mock.calls.SelectForDelete = append(mock.calls.SelectForDelete, callInfo)
+	mock.lockSelectForDelete.Unlock()
+	return mock.SelectForDeleteFunc(key)
+}
+
+// SelectForDeleteCalls gets all the calls that were made to SelectForDelete.
+// Check the length with:
+//
+//	len(mockedSelector.SelectForDeleteCalls())
+func (mock *SelectorMock) SelectForDeleteCalls() []struct {
+	Key string
+} {
+	var calls []struct {
+		Key string
+	}
+	mock.lockSelectForDelete.RLock()
+	calls = mock.calls.SelectForDelete
+	mock.lockSelectForDelete.RUnlock()
+	return calls
 }
 
 // SelectServer calls SelectServerFunc.
-func (mock *RouteMock) SelectServer(key string, failedServers []ServerID) ServerID {
+func (mock *SelectorMock) SelectServer(key string) ServerID {
 	if mock.SelectServerFunc == nil {
-		panic("RouteMock.SelectServerFunc: method is nil but Route.SelectServer was just called")
+		panic("SelectorMock.SelectServerFunc: method is nil but Selector.SelectServer was just called")
 	}
 	callInfo := struct {
-		Key           string
-		FailedServers []ServerID
+		Key string
 	}{
-		Key:           key,
-		FailedServers: failedServers,
+		Key: key,
 	}
 	mock.lockSelectServer.Lock()
 	mock.calls.SelectServer = append(mock.calls.SelectServer, callInfo)
 	mock.lockSelectServer.Unlock()
-	return mock.SelectServerFunc(key, failedServers)
+	return mock.SelectServerFunc(key)
 }
 
 // SelectServerCalls gets all the calls that were made to SelectServer.
 // Check the length with:
 //
-//	len(mockedRoute.SelectServerCalls())
-func (mock *RouteMock) SelectServerCalls() []struct {
-	Key           string
-	FailedServers []ServerID
+//	len(mockedSelector.SelectServerCalls())
+func (mock *SelectorMock) SelectServerCalls() []struct {
+	Key string
 } {
 	var calls []struct {
-		Key           string
-		FailedServers []ServerID
+		Key string
 	}
 	mock.lockSelectServer.RLock()
 	calls = mock.calls.SelectServer
 	mock.lockSelectServer.RUnlock()
+	return calls
+}
+
+// SetFailedServer calls SetFailedServerFunc.
+func (mock *SelectorMock) SetFailedServer(server ServerID) {
+	if mock.SetFailedServerFunc == nil {
+		panic("SelectorMock.SetFailedServerFunc: method is nil but Selector.SetFailedServer was just called")
+	}
+	callInfo := struct {
+		Server ServerID
+	}{
+		Server: server,
+	}
+	mock.lockSetFailedServer.Lock()
+	mock.calls.SetFailedServer = append(mock.calls.SetFailedServer, callInfo)
+	mock.lockSetFailedServer.Unlock()
+	mock.SetFailedServerFunc(server)
+}
+
+// SetFailedServerCalls gets all the calls that were made to SetFailedServer.
+// Check the length with:
+//
+//	len(mockedSelector.SetFailedServerCalls())
+func (mock *SelectorMock) SetFailedServerCalls() []struct {
+	Server ServerID
+} {
+	var calls []struct {
+		Server ServerID
+	}
+	mock.lockSetFailedServer.RLock()
+	calls = mock.calls.SetFailedServer
+	mock.lockSetFailedServer.RUnlock()
 	return calls
 }

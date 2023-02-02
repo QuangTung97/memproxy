@@ -17,13 +17,14 @@ type pipelineTest struct {
 	pipe1 *mocks.PipelineMock
 	pipe2 *mocks.PipelineMock
 
-	client memproxy.Memcache
-	route  *RouteMock
-	pipe   memproxy.Pipeline
+	client   memproxy.Memcache
+	route    *RouteMock
+	selector *SelectorMock
+	pipe     memproxy.Pipeline
 }
 
-const serverID1 = 31
-const serverID2 = 32
+const serverID1 ServerID = 31
+const serverID2 ServerID = 32
 
 type ctxKeyType struct {
 }
@@ -71,7 +72,14 @@ func newPipelineTest(t *testing.T) *pipelineTest {
 		Port: 11212,
 	}
 
+	selector := &SelectorMock{}
+	selector.SetFailedServerFunc = func(server ServerID) {
+	}
+
 	route := &RouteMock{}
+	route.NewSelectorFunc = func() Selector {
+		return selector
+	}
 
 	mc, err := New[SimpleServerConfig](Config[SimpleServerConfig]{
 		Servers: []SimpleServerConfig{server1, server2},
@@ -91,15 +99,22 @@ func newPipelineTest(t *testing.T) *pipelineTest {
 
 	p.client = mc
 	p.route = route
+	p.selector = selector
 	p.pipe = p.client.Pipeline(newContext(), sessProvider.New())
 
 	return p
 }
 
 func (p *pipelineTest) stubSelect(idList ...ServerID) {
-	p.route.SelectServerFunc = func(key string, failedServers []ServerID) ServerID {
-		index := len(p.route.SelectServerCalls()) - 1
+	p.selector.SelectServerFunc = func(key string) ServerID {
+		index := len(p.selector.SelectServerCalls()) - 1
 		return idList[index]
+	}
+}
+
+func (p *pipelineTest) stubHasNextAvail(hasNext bool) {
+	p.selector.HasNextAvailableServerFunc = func() bool {
+		return hasNext
 	}
 }
 
@@ -133,6 +148,16 @@ func (p *pipelineTest) stubLeaseSet1(resp memproxy.LeaseSetResponse, err error) 
 	}
 }
 
+func (p *pipelineTest) stubLeaseSet2(resp memproxy.LeaseSetResponse, err error) {
+	p.pipe2.LeaseSetFunc = func(
+		key string, data []byte, cas uint64, options memproxy.LeaseSetOptions,
+	) func() (memproxy.LeaseSetResponse, error) {
+		return func() (memproxy.LeaseSetResponse, error) {
+			return resp, err
+		}
+	}
+}
+
 func TestPipeline(t *testing.T) {
 	t.Run("call-select-server", func(t *testing.T) {
 		p := newPipelineTest(t)
@@ -147,10 +172,9 @@ func TestPipeline(t *testing.T) {
 
 		p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
 
-		calls := p.route.SelectServerCalls()
+		calls := p.selector.SelectServerCalls()
 		assert.Equal(t, 1, len(calls))
 		assert.Equal(t, "KEY01", calls[0].Key)
-		assert.Equal(t, 0, len(calls[0].FailedServers))
 
 		pipeCalls := p.mc1.PipelineCalls()
 		assert.Equal(t, 1, len(pipeCalls))
@@ -202,12 +226,15 @@ func TestPipeline(t *testing.T) {
 			serverID1,
 			serverID2,
 		)
+
 		p.stubLeaseGet1(memproxy.LeaseGetResponse{}, errors.New("some error"))
 		p.stubLeaseGet2(memproxy.LeaseGetResponse{
 			Status: memproxy.LeaseGetStatusFound,
 			CAS:    443,
 			Data:   []byte("found 01"),
 		}, nil)
+
+		p.stubHasNextAvail(true)
 
 		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
 		resp, err := fn()
@@ -220,14 +247,44 @@ func TestPipeline(t *testing.T) {
 		}, resp)
 
 		// Check Init New Pipeline
-		calls := p.route.SelectServerCalls()
+		calls := p.selector.SelectServerCalls()
 		assert.Equal(t, 2, len(calls))
-
 		assert.Equal(t, "KEY01", calls[0].Key)
-		assert.Equal(t, 0, len(calls[0].FailedServers))
-
 		assert.Equal(t, "KEY01", calls[1].Key)
-		assert.Equal(t, []ServerID{serverID1}, calls[1].FailedServers)
+
+		pipeCalls := p.mc1.PipelineCalls()
+		assert.Equal(t, 1, len(pipeCalls))
+		assert.Equal(t, newContext(), pipeCalls[0].Ctx)
+
+		// Do Call Set Server Failed
+		setCalls := p.selector.SetFailedServerCalls()
+		assert.Equal(t, 1, len(setCalls))
+		assert.Equal(t, serverID1, setCalls[0].Server)
+	})
+
+	t.Run("lease_get_with_error__has_next_false__not_retry_on_other_server", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		p.stubSelect(
+			serverID1,
+			serverID2,
+		)
+
+		getError := errors.New("some error")
+		p.stubLeaseGet1(memproxy.LeaseGetResponse{}, getError)
+
+		p.stubHasNextAvail(false)
+
+		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+		resp, err := fn()
+
+		assert.Equal(t, getError, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{}, resp)
+
+		// Check Init New Pipeline
+		calls := p.selector.SelectServerCalls()
+		assert.Equal(t, 1, len(calls))
+		assert.Equal(t, "KEY01", calls[0].Key)
 
 		pipeCalls := p.mc1.PipelineCalls()
 		assert.Equal(t, 1, len(pipeCalls))
@@ -283,5 +340,44 @@ func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
 
 		setCalls := p.pipe1.LeaseSetCalls()
 		assert.Equal(t, 0, len(setCalls))
+	})
+
+	t.Run("lease-get-with-fallback-on-error--then-set", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		p.stubSelect(serverID1, serverID2)
+
+		getError := errors.New("some error")
+		p.stubLeaseGet1(memproxy.LeaseGetResponse{}, getError)
+		p.stubLeaseGet2(memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    2255,
+		}, nil)
+
+		p.stubHasNextAvail(true)
+
+		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+		resp, err := fn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    2255,
+		}, resp)
+
+		// Do Lease Set
+		p.stubLeaseSet2(memproxy.LeaseSetResponse{}, nil)
+
+		setFn := p.pipe.LeaseSet("KEY01", []byte("set data 01"), 2255, memproxy.LeaseSetOptions{})
+		setResp, err := setFn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseSetResponse{}, setResp)
+
+		setCalls := p.pipe2.LeaseSetCalls()
+		assert.Equal(t, 1, len(setCalls))
+		assert.Equal(t, "KEY01", setCalls[0].Key)
+		assert.Equal(t, uint64(2255), setCalls[0].Cas)
+		assert.Equal(t, []byte("set data 01"), setCalls[0].Data)
 	})
 }

@@ -9,22 +9,38 @@ type ServerConfig interface {
 	GetID() ServerID
 }
 
-//go:generate moq -rm -out proxy_mocks_test.go . Route
+//go:generate moq -rm -out proxy_mocks_test.go . Route Selector
 
-// Route ...
+// Route must be Thread Safe
 type Route interface {
-	// SelectServer choose a server id
-	SelectServer(key string, failedServers []ServerID) ServerID
+	// NewSelector ...
+	NewSelector() Selector
 }
 
-// ReplicatedRouteConfig ...
-type ReplicatedRouteConfig struct {
-	Server ServerID
+// Selector is NOT thread safe
+type Selector interface {
+	// SetFailedServer ...
+	SetFailedServer(server ServerID)
+
+	// HasNextAvailableServer check if next available server ready to be fallback to
+	HasNextAvailableServer() bool
+
+	// SelectServer choose a server id
+	SelectServer(key string) ServerID
+
+	// SelectForDelete choose servers for deleting
+	SelectForDelete(key string) []ServerID
 }
 
 // ReplicatedRoute ...
 type ReplicatedRoute struct {
-	Children []ReplicatedRouteConfig
+	Children []ServerID
+
+	// MemScoreFunc for calculating scores from memory size (in bytes) of memcached servers
+	MemScoreFunc func(memSize float64) float64
+
+	// MinPercentage specify a lower bound for percentage of requests into memcached servers
+	MinPercentage float64
 }
 
 // Config ...

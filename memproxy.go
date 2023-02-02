@@ -17,7 +17,11 @@ type Pipeline interface {
 	LeaseGet(key string, options LeaseGetOptions) func() (LeaseGetResponse, error)
 	LeaseSet(key string, data []byte, cas uint64, options LeaseSetOptions) func() (LeaseSetResponse, error)
 	Delete(key string, options DeleteOptions) func() (DeleteResponse, error)
+
+	// Execute flush commands to the network
 	Execute()
+
+	// Finish must be called after create a Pipeline, often by defer
 	Finish()
 
 	// LowerSession returns a lower priority session

@@ -36,14 +36,14 @@ func New[S ServerConfig](
 type Pipeline struct {
 	ctx context.Context
 
-	client      *Memcache
+	client   *Memcache
+	selector Selector
+
 	sess        memproxy.Session
 	pipeSession memproxy.Session
 
 	pipelines       map[ServerID]memproxy.Pipeline
 	leaseSetServers map[string]ServerID
-
-	failedServers []ServerID
 }
 
 // Pipeline ...
@@ -53,7 +53,9 @@ func (m *Memcache) Pipeline(
 	return &Pipeline{
 		ctx: ctx,
 
-		client:      m,
+		client:   m,
+		selector: m.route.NewSelector(),
+
 		pipeSession: sess,
 		sess:        sess.GetLower(),
 
@@ -84,7 +86,7 @@ func (p *Pipeline) getRoutePipeline(serverID ServerID) memproxy.Pipeline {
 func (p *Pipeline) LeaseGet(
 	key string, options memproxy.LeaseGetOptions,
 ) func() (memproxy.LeaseGetResponse, error) {
-	serverID := p.client.route.SelectServer(key, p.failedServers)
+	serverID := p.selector.SelectServer(key)
 	pipe := p.getRoutePipeline(serverID)
 
 	fn := pipe.LeaseGet(key, options)
@@ -95,8 +97,12 @@ func (p *Pipeline) LeaseGet(
 	p.sess.AddNextCall(func() {
 		resp, err = fn()
 		if err != nil {
-			p.failedServers = append(p.failedServers, serverID)
-			serverID = p.client.route.SelectServer(key, p.failedServers)
+			p.selector.SetFailedServer(serverID)
+			if !p.selector.HasNextAvailableServer() {
+				return
+			}
+
+			serverID = p.selector.SelectServer(key)
 
 			pipe := p.getRoutePipeline(serverID)
 			fn = pipe.LeaseGet(key, options)
@@ -116,6 +122,7 @@ func (p *Pipeline) LeaseGet(
 	})
 
 	return func() (memproxy.LeaseGetResponse, error) {
+		// TODO Do Execute Flush Commands
 		p.sess.Execute()
 		return resp, err
 	}
