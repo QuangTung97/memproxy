@@ -124,6 +124,7 @@ func (p *Pipeline) LeaseGet(
 	return func() (memproxy.LeaseGetResponse, error) {
 		// TODO Do Execute Flush Commands
 		p.sess.Execute()
+		p.selector.Reset()
 		return resp, err
 	}
 }

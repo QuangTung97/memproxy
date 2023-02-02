@@ -25,11 +25,14 @@ type Selector interface {
 	// HasNextAvailableServer check if next available server ready to be fallback to
 	HasNextAvailableServer() bool
 
-	// SelectServer choose a server id
+	// SelectServer choose a server id, will keep in this server id unless Reset is call or failed server added
 	SelectServer(key string) ServerID
 
 	// SelectForDelete choose servers for deleting
 	SelectForDelete(key string) []ServerID
+
+	// Reset the selection
+	Reset()
 }
 
 // ReplicatedRoute ...

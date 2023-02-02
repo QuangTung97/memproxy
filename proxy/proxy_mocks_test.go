@@ -79,6 +79,9 @@ var _ Selector = &SelectorMock{}
 //			HasNextAvailableServerFunc: func() bool {
 //				panic("mock out the HasNextAvailableServer method")
 //			},
+//			ResetFunc: func()  {
+//				panic("mock out the Reset method")
+//			},
 //			SelectForDeleteFunc: func(key string) []ServerID {
 //				panic("mock out the SelectForDelete method")
 //			},
@@ -98,6 +101,9 @@ type SelectorMock struct {
 	// HasNextAvailableServerFunc mocks the HasNextAvailableServer method.
 	HasNextAvailableServerFunc func() bool
 
+	// ResetFunc mocks the Reset method.
+	ResetFunc func()
+
 	// SelectForDeleteFunc mocks the SelectForDelete method.
 	SelectForDeleteFunc func(key string) []ServerID
 
@@ -111,6 +117,9 @@ type SelectorMock struct {
 	calls struct {
 		// HasNextAvailableServer holds details about calls to the HasNextAvailableServer method.
 		HasNextAvailableServer []struct {
+		}
+		// Reset holds details about calls to the Reset method.
+		Reset []struct {
 		}
 		// SelectForDelete holds details about calls to the SelectForDelete method.
 		SelectForDelete []struct {
@@ -129,6 +138,7 @@ type SelectorMock struct {
 		}
 	}
 	lockHasNextAvailableServer sync.RWMutex
+	lockReset                  sync.RWMutex
 	lockSelectForDelete        sync.RWMutex
 	lockSelectServer           sync.RWMutex
 	lockSetFailedServer        sync.RWMutex
@@ -158,6 +168,33 @@ func (mock *SelectorMock) HasNextAvailableServerCalls() []struct {
 	mock.lockHasNextAvailableServer.RLock()
 	calls = mock.calls.HasNextAvailableServer
 	mock.lockHasNextAvailableServer.RUnlock()
+	return calls
+}
+
+// Reset calls ResetFunc.
+func (mock *SelectorMock) Reset() {
+	if mock.ResetFunc == nil {
+		panic("SelectorMock.ResetFunc: method is nil but Selector.Reset was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockReset.Lock()
+	mock.calls.Reset = append(mock.calls.Reset, callInfo)
+	mock.lockReset.Unlock()
+	mock.ResetFunc()
+}
+
+// ResetCalls gets all the calls that were made to Reset.
+// Check the length with:
+//
+//	len(mockedSelector.ResetCalls())
+func (mock *SelectorMock) ResetCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockReset.RLock()
+	calls = mock.calls.Reset
+	mock.lockReset.RUnlock()
 	return calls
 }
 

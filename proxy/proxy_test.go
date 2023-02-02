@@ -75,6 +75,8 @@ func newPipelineTest(t *testing.T) *pipelineTest {
 	selector := &SelectorMock{}
 	selector.SetFailedServerFunc = func(server ServerID) {
 	}
+	selector.ResetFunc = func() {
+	}
 
 	route := &RouteMock{}
 	route.NewSelectorFunc = func() Selector {
@@ -217,6 +219,8 @@ func TestPipeline(t *testing.T) {
 			CAS:    7622,
 			Data:   []byte("data 01"),
 		}, resp)
+
+		assert.Equal(t, 1, len(p.selector.ResetCalls()))
 	})
 
 	t.Run("lease-get-with-error-retry-on-other-server", func(t *testing.T) {
