@@ -107,9 +107,6 @@ var _ Pipeline = &PipelineMock{}
 //			FinishFunc: func()  {
 //				panic("mock out the Finish method")
 //			},
-//			GetFunc: func(key string, options memproxy.GetOptions) func() (memproxy.GetResponse, error) {
-//				panic("mock out the Get method")
-//			},
 //			LeaseGetFunc: func(key string, options memproxy.LeaseGetOptions) func() (memproxy.LeaseGetResponse, error) {
 //				panic("mock out the LeaseGet method")
 //			},
@@ -135,9 +132,6 @@ type PipelineMock struct {
 	// FinishFunc mocks the Finish method.
 	FinishFunc func()
 
-	// GetFunc mocks the Get method.
-	GetFunc func(key string, options memproxy.GetOptions) func() (memproxy.GetResponse, error)
-
 	// LeaseGetFunc mocks the LeaseGet method.
 	LeaseGetFunc func(key string, options memproxy.LeaseGetOptions) func() (memproxy.LeaseGetResponse, error)
 
@@ -161,13 +155,6 @@ type PipelineMock struct {
 		}
 		// Finish holds details about calls to the Finish method.
 		Finish []struct {
-		}
-		// Get holds details about calls to the Get method.
-		Get []struct {
-			// Key is the key argument value.
-			Key string
-			// Options is the options argument value.
-			Options memproxy.GetOptions
 		}
 		// LeaseGet holds details about calls to the LeaseGet method.
 		LeaseGet []struct {
@@ -194,7 +181,6 @@ type PipelineMock struct {
 	lockDelete       sync.RWMutex
 	lockExecute      sync.RWMutex
 	lockFinish       sync.RWMutex
-	lockGet          sync.RWMutex
 	lockLeaseGet     sync.RWMutex
 	lockLeaseSet     sync.RWMutex
 	lockLowerSession sync.RWMutex
@@ -287,42 +273,6 @@ func (mock *PipelineMock) FinishCalls() []struct {
 	mock.lockFinish.RLock()
 	calls = mock.calls.Finish
 	mock.lockFinish.RUnlock()
-	return calls
-}
-
-// Get calls GetFunc.
-func (mock *PipelineMock) Get(key string, options memproxy.GetOptions) func() (memproxy.GetResponse, error) {
-	if mock.GetFunc == nil {
-		panic("PipelineMock.GetFunc: method is nil but Pipeline.Get was just called")
-	}
-	callInfo := struct {
-		Key     string
-		Options memproxy.GetOptions
-	}{
-		Key:     key,
-		Options: options,
-	}
-	mock.lockGet.Lock()
-	mock.calls.Get = append(mock.calls.Get, callInfo)
-	mock.lockGet.Unlock()
-	return mock.GetFunc(key, options)
-}
-
-// GetCalls gets all the calls that were made to Get.
-// Check the length with:
-//
-//	len(mockedPipeline.GetCalls())
-func (mock *PipelineMock) GetCalls() []struct {
-	Key     string
-	Options memproxy.GetOptions
-} {
-	var calls []struct {
-		Key     string
-		Options memproxy.GetOptions
-	}
-	mock.lockGet.RLock()
-	calls = mock.calls.Get
-	mock.lockGet.RUnlock()
 	return calls
 }
 

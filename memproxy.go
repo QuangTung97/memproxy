@@ -13,7 +13,6 @@ type Memcache interface {
 
 // Pipeline represents a generic Pipeline
 type Pipeline interface {
-	Get(key string, options GetOptions) func() (GetResponse, error)
 	LeaseGet(key string, options LeaseGetOptions) func() (LeaseGetResponse, error)
 	LeaseSet(key string, data []byte, cas uint64, options LeaseSetOptions) func() (LeaseSetResponse, error)
 	Delete(key string, options DeleteOptions) func() (DeleteResponse, error)
@@ -40,16 +39,6 @@ type Session interface {
 	Execute()
 
 	GetLower() Session
-}
-
-// GetOptions specify GET options
-type GetOptions struct {
-}
-
-// GetResponse of GET request
-type GetResponse struct {
-	Found bool
-	Data  []byte
 }
 
 // LeaseGetOptions lease get options
@@ -82,8 +71,20 @@ type LeaseSetOptions struct {
 	TTL uint32
 }
 
+// LeaseSetStatus ...
+type LeaseSetStatus uint32
+
+const (
+	// LeaseSetStatusStored ...
+	LeaseSetStatusStored LeaseSetStatus = iota + 1
+
+	// LeaseSetStatusNotStored NOT stored because of key already been deleted or CAS has changed
+	LeaseSetStatusNotStored
+)
+
 // LeaseSetResponse lease set response
 type LeaseSetResponse struct {
+	Status LeaseSetStatus
 }
 
 // DeleteOptions delete options

@@ -41,24 +41,6 @@ func (p *plainPipelineImpl) LowerSession() Session {
 	return p.sess.GetLower()
 }
 
-// Get ...
-func (p *plainPipelineImpl) Get(key string, _ GetOptions) func() (GetResponse, error) {
-	fn := p.pipeline.MGet(key, memcache.MGetOptions{})
-	return func() (GetResponse, error) {
-		resp, err := fn()
-		if err != nil {
-			return GetResponse{}, err
-		}
-		if resp.Type == memcache.MGetResponseTypeVA {
-			return GetResponse{
-				Found: true,
-				Data:  resp.Data,
-			}, nil
-		}
-		return GetResponse{}, nil
-	}
-}
-
 // LeaseGet ...
 func (p *plainPipelineImpl) LeaseGet(key string, _ LeaseGetOptions) func() (LeaseGetResponse, error) {
 	fn := p.pipeline.MGet(key, memcache.MGetOptions{
@@ -106,11 +88,17 @@ func (p *plainPipelineImpl) LeaseSet(
 		TTL: options.TTL,
 	})
 	return func() (LeaseSetResponse, error) {
-		_, err := fn()
+		resp, err := fn()
 		if err != nil {
 			return LeaseSetResponse{}, err
 		}
-		return LeaseSetResponse{}, nil
+		status := LeaseSetStatusNotStored
+		if resp.Type == memcache.MSetResponseTypeHD {
+			status = LeaseSetStatusStored
+		}
+		return LeaseSetResponse{
+			status,
+		}, nil
 	}
 }
 

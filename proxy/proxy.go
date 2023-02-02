@@ -70,15 +70,6 @@ func (m *Memcache) Pipeline(
 	}
 }
 
-// Get ...
-func (*Pipeline) Get(
-	_ string, _ memproxy.GetOptions,
-) func() (memproxy.GetResponse, error) {
-	return func() (memproxy.GetResponse, error) {
-		return memproxy.GetResponse{}, nil
-	}
-}
-
 func (p *Pipeline) getRoutePipeline(serverID ServerID) memproxy.Pipeline {
 	pipe, existed := p.pipelines[serverID]
 	if !existed {
