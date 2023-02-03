@@ -95,6 +95,7 @@ func (s *replicatedRouteSelector) SetFailedServer(server ServerID) {
 	if !existed {
 		s.Reset()
 		s.remainingServers = s.computeRemainingServers()
+		s.route.stats.NotifyServerFailed(server)
 	}
 }
 
@@ -104,16 +105,20 @@ func (s *replicatedRouteSelector) HasNextAvailableServer() bool {
 }
 
 func (s *replicatedRouteSelector) computeRemainingServers() []ServerID {
-	if s.failedServers == nil {
-		return s.route.configServers
-	}
-
 	remainingServers := make([]ServerID, 0, len(s.route.configServers))
 	for _, server := range s.route.configServers {
-		_, existed := s.failedServers[server]
-		if existed {
+		if s.route.stats.IsServerFailed(server) {
+			s.failedServers[server] = struct{}{}
 			continue
 		}
+
+		if s.failedServers != nil {
+			_, existed := s.failedServers[server]
+			if existed {
+				continue
+			}
+		}
+
 		remainingServers = append(remainingServers, server)
 	}
 

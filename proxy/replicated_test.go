@@ -18,12 +18,17 @@ type replicatedRouteTest struct {
 func newReplicatedRouteTest() *replicatedRouteTest {
 	r := &replicatedRouteTest{}
 
-	r.stats = &ServerStatsMock{}
+	r.stats = &ServerStatsMock{
+		NotifyServerFailedFunc: func(server ServerID) {
+		},
+	}
 
 	randFunc := func(n uint64) uint64 {
 		r.randArgs = append(r.randArgs, n)
 		return r.randFunc(n)
 	}
+
+	r.stubServerFailed(false)
 
 	r.route = NewReplicatedRoute(
 		[]ServerID{
@@ -48,6 +53,12 @@ func (r *replicatedRouteTest) stubGetMem(values ...float64) {
 func (r *replicatedRouteTest) stubRand(val uint64) {
 	r.randFunc = func(n uint64) uint64 {
 		return val
+	}
+}
+
+func (r *replicatedRouteTest) stubServerFailed(failed bool) {
+	r.stats.IsServerFailedFunc = func(server ServerID) bool {
+		return failed
 	}
 }
 
@@ -83,6 +94,11 @@ func TestReplicatedRoute(t *testing.T) {
 
 		assert.Equal(t, serverID1, getMemCalls[2].Server)
 		assert.Equal(t, serverID2, getMemCalls[3].Server)
+
+		getFailedCalls := r.stats.IsServerFailedCalls()
+		assert.Equal(t, 2, len(getFailedCalls))
+		assert.Equal(t, serverID1, getFailedCalls[0].Server)
+		assert.Equal(t, serverID2, getFailedCalls[1].Server)
 	})
 
 	t.Run("weight-is-changed-in-between", func(t *testing.T) {
@@ -123,8 +139,12 @@ func TestReplicatedRoute(t *testing.T) {
 
 		r.stubRand(499000)
 		assert.Equal(t, serverID2, r.selector.SelectServer(""))
+		assert.Equal(t, true, r.selector.HasNextAvailableServer())
 
 		assert.Equal(t, []ServerID{serverID2}, r.selector.SelectForDelete(""))
+
+		assert.Equal(t, 1, len(r.stats.NotifyServerFailedCalls()))
+		assert.Equal(t, serverID1, r.stats.NotifyServerFailedCalls()[0].Server)
 	})
 
 	t.Run("all-servers-failed--use-normal-random", func(t *testing.T) {
@@ -148,12 +168,36 @@ func TestReplicatedRoute(t *testing.T) {
 
 		assert.Equal(t, []ServerID{serverID1, serverID2}, r.selector.SelectForDelete(""))
 	})
+
+	t.Run("set-failed-server--but-status-all-server-already-failed", func(t *testing.T) {
+		r := newReplicatedRouteTest()
+
+		r.stubGetMem(
+			50, 50,
+			50, 50,
+		)
+
+		r.stubServerFailed(true)
+		r.selector.SetFailedServer(serverID1)
+
+		r.stubRand(499000)
+		assert.Equal(t, serverID1, r.selector.SelectServer(""))
+		assert.Equal(t, false, r.selector.HasNextAvailableServer())
+
+		assert.Equal(t, []ServerID{serverID1, serverID2}, r.selector.SelectForDelete(""))
+
+		assert.Equal(t, 1, len(r.stats.NotifyServerFailedCalls()))
+		assert.Equal(t, serverID1, r.stats.NotifyServerFailedCalls()[0].Server)
+	})
 }
 
 func TestReplicatedRoute_With_Real_Rand(*testing.T) {
 	stats := &ServerStatsMock{
 		GetMemUsageFunc: func(server ServerID) float64 {
 			return 50
+		},
+		IsServerFailedFunc: func(server ServerID) bool {
+			return false
 		},
 	}
 	route := NewReplicatedRoute(
