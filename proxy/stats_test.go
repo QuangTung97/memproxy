@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"sync"
 	"testing"
 	"time"
 )
@@ -23,8 +24,20 @@ type serverStatsTest struct {
 	clients map[ServerID]*StatsClientMock
 	stats   *SimpleServerStats
 
+	mut     sync.Mutex
 	newArgs []SimpleServerConfig
+
 	newFunc func(conf SimpleServerConfig) (StatsClient, error)
+}
+
+func (s *serverStatsTest) getNewArgs() []SimpleServerConfig {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	result := make([]SimpleServerConfig, len(s.newArgs))
+	copy(result, s.newArgs)
+
+	return result
 }
 
 func newServerStatsTest(t *testing.T) *serverStatsTest {
@@ -59,7 +72,10 @@ func newServerStatsTest(t *testing.T) *serverStatsTest {
 			Port: 11202,
 		},
 	}, func(conf SimpleServerConfig) (StatsClient, error) {
+		s.mut.Lock()
 		s.newArgs = append(s.newArgs, conf)
+		s.mut.Unlock()
+
 		return s.newFunc(conf)
 	})
 
@@ -104,7 +120,7 @@ func TestSimpleServerStats(t *testing.T) {
 		s.stubGetMem(serverID1, 18000, nil)
 
 		s.stats.NotifyServerFailed(serverID1)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(40 * time.Millisecond)
 
 		assert.Equal(t, float64(18000), s.stats.GetMemUsage(serverID1))
 
@@ -137,7 +153,7 @@ func TestSimpleServerStats(t *testing.T) {
 		}
 
 		s.stats.NotifyServerFailed(serverID1)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(40 * time.Millisecond)
 
 		assert.Equal(t, float64(8000), s.stats.GetMemUsage(serverID1))
 
@@ -145,12 +161,12 @@ func TestSimpleServerStats(t *testing.T) {
 		getCalls = s.clients[serverID1].GetMemUsageCalls()
 		assert.Equal(t, 2, len(getCalls))
 
-		assert.Equal(t, 3, len(s.newArgs))
+		assert.Equal(t, 3, len(s.getNewArgs()))
 		assert.Equal(t, SimpleServerConfig{
 			ID:   serverID1,
 			Host: "localhost",
 			Port: 11201,
-		}, s.newArgs[2])
+		}, s.getNewArgs()[2])
 
 		// Check Failed Again
 		assert.Equal(t, true, s.stats.IsServerFailed(serverID1))
@@ -190,12 +206,12 @@ func TestSimpleServerStats(t *testing.T) {
 		getCalls = s.clients[serverID1].GetMemUsageCalls()
 		assert.Equal(t, 2, len(getCalls))
 
-		assert.Equal(t, 3, len(s.newArgs))
+		assert.Equal(t, 3, len(s.getNewArgs()))
 		assert.Equal(t, SimpleServerConfig{
 			ID:   serverID1,
 			Host: "localhost",
 			Port: 11201,
-		}, s.newArgs[2])
+		}, s.getNewArgs()[2])
 
 		// Check Failed Again
 		assert.Equal(t, true, s.stats.IsServerFailed(serverID1))
