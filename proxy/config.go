@@ -9,7 +9,7 @@ type ServerConfig interface {
 	GetID() ServerID
 }
 
-//go:generate moq -rm -out proxy_mocks_test.go . Route Selector
+//go:generate moq -rm -out proxy_mocks_test.go . Route Selector ServerStats
 
 // Route must be Thread Safe
 type Route interface {
@@ -35,17 +35,6 @@ type Selector interface {
 	Reset()
 }
 
-// ReplicatedRoute ...
-type ReplicatedRoute struct {
-	Children []ServerID
-
-	// MemScoreFunc for calculating scores from memory size (in bytes) of memcached servers
-	MemScoreFunc func(memSize float64) float64
-
-	// MinPercentage specify a lower bound for percentage of requests into memcached servers
-	MinPercentage float64
-}
-
 // Config ...
 type Config[S ServerConfig] struct {
 	Servers []S
@@ -62,4 +51,16 @@ type SimpleServerConfig struct {
 // GetID ...
 func (c SimpleServerConfig) GetID() ServerID {
 	return c.ID
+}
+
+// ServerStats is thread safe
+type ServerStats interface {
+	// IsServerFailed check whether the server is currently not connected
+	IsServerFailed(server ServerID) bool
+
+	// NotifyServerFailed ...
+	NotifyServerFailed(server ServerID)
+
+	// GetMemUsage returns memory usage in bytes
+	GetMemUsage(server ServerID) float64
 }

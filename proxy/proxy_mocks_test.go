@@ -293,3 +293,157 @@ func (mock *SelectorMock) SetFailedServerCalls() []struct {
 	mock.lockSetFailedServer.RUnlock()
 	return calls
 }
+
+// Ensure, that ServerStatsMock does implement ServerStats.
+// If this is not the case, regenerate this file with moq.
+var _ ServerStats = &ServerStatsMock{}
+
+// ServerStatsMock is a mock implementation of ServerStats.
+//
+//	func TestSomethingThatUsesServerStats(t *testing.T) {
+//
+//		// make and configure a mocked ServerStats
+//		mockedServerStats := &ServerStatsMock{
+//			GetMemUsageFunc: func(server ServerID) float64 {
+//				panic("mock out the GetMemUsage method")
+//			},
+//			IsServerFailedFunc: func(server ServerID) bool {
+//				panic("mock out the IsServerFailed method")
+//			},
+//			NotifyServerFailedFunc: func(server ServerID)  {
+//				panic("mock out the NotifyServerFailed method")
+//			},
+//		}
+//
+//		// use mockedServerStats in code that requires ServerStats
+//		// and then make assertions.
+//
+//	}
+type ServerStatsMock struct {
+	// GetMemUsageFunc mocks the GetMemUsage method.
+	GetMemUsageFunc func(server ServerID) float64
+
+	// IsServerFailedFunc mocks the IsServerFailed method.
+	IsServerFailedFunc func(server ServerID) bool
+
+	// NotifyServerFailedFunc mocks the NotifyServerFailed method.
+	NotifyServerFailedFunc func(server ServerID)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// GetMemUsage holds details about calls to the GetMemUsage method.
+		GetMemUsage []struct {
+			// Server is the server argument value.
+			Server ServerID
+		}
+		// IsServerFailed holds details about calls to the IsServerFailed method.
+		IsServerFailed []struct {
+			// Server is the server argument value.
+			Server ServerID
+		}
+		// NotifyServerFailed holds details about calls to the NotifyServerFailed method.
+		NotifyServerFailed []struct {
+			// Server is the server argument value.
+			Server ServerID
+		}
+	}
+	lockGetMemUsage        sync.RWMutex
+	lockIsServerFailed     sync.RWMutex
+	lockNotifyServerFailed sync.RWMutex
+}
+
+// GetMemUsage calls GetMemUsageFunc.
+func (mock *ServerStatsMock) GetMemUsage(server ServerID) float64 {
+	if mock.GetMemUsageFunc == nil {
+		panic("ServerStatsMock.GetMemUsageFunc: method is nil but ServerStats.GetMemUsage was just called")
+	}
+	callInfo := struct {
+		Server ServerID
+	}{
+		Server: server,
+	}
+	mock.lockGetMemUsage.Lock()
+	mock.calls.GetMemUsage = append(mock.calls.GetMemUsage, callInfo)
+	mock.lockGetMemUsage.Unlock()
+	return mock.GetMemUsageFunc(server)
+}
+
+// GetMemUsageCalls gets all the calls that were made to GetMemUsage.
+// Check the length with:
+//
+//	len(mockedServerStats.GetMemUsageCalls())
+func (mock *ServerStatsMock) GetMemUsageCalls() []struct {
+	Server ServerID
+} {
+	var calls []struct {
+		Server ServerID
+	}
+	mock.lockGetMemUsage.RLock()
+	calls = mock.calls.GetMemUsage
+	mock.lockGetMemUsage.RUnlock()
+	return calls
+}
+
+// IsServerFailed calls IsServerFailedFunc.
+func (mock *ServerStatsMock) IsServerFailed(server ServerID) bool {
+	if mock.IsServerFailedFunc == nil {
+		panic("ServerStatsMock.IsServerFailedFunc: method is nil but ServerStats.IsServerFailed was just called")
+	}
+	callInfo := struct {
+		Server ServerID
+	}{
+		Server: server,
+	}
+	mock.lockIsServerFailed.Lock()
+	mock.calls.IsServerFailed = append(mock.calls.IsServerFailed, callInfo)
+	mock.lockIsServerFailed.Unlock()
+	return mock.IsServerFailedFunc(server)
+}
+
+// IsServerFailedCalls gets all the calls that were made to IsServerFailed.
+// Check the length with:
+//
+//	len(mockedServerStats.IsServerFailedCalls())
+func (mock *ServerStatsMock) IsServerFailedCalls() []struct {
+	Server ServerID
+} {
+	var calls []struct {
+		Server ServerID
+	}
+	mock.lockIsServerFailed.RLock()
+	calls = mock.calls.IsServerFailed
+	mock.lockIsServerFailed.RUnlock()
+	return calls
+}
+
+// NotifyServerFailed calls NotifyServerFailedFunc.
+func (mock *ServerStatsMock) NotifyServerFailed(server ServerID) {
+	if mock.NotifyServerFailedFunc == nil {
+		panic("ServerStatsMock.NotifyServerFailedFunc: method is nil but ServerStats.NotifyServerFailed was just called")
+	}
+	callInfo := struct {
+		Server ServerID
+	}{
+		Server: server,
+	}
+	mock.lockNotifyServerFailed.Lock()
+	mock.calls.NotifyServerFailed = append(mock.calls.NotifyServerFailed, callInfo)
+	mock.lockNotifyServerFailed.Unlock()
+	mock.NotifyServerFailedFunc(server)
+}
+
+// NotifyServerFailedCalls gets all the calls that were made to NotifyServerFailed.
+// Check the length with:
+//
+//	len(mockedServerStats.NotifyServerFailedCalls())
+func (mock *ServerStatsMock) NotifyServerFailedCalls() []struct {
+	Server ServerID
+} {
+	var calls []struct {
+		Server ServerID
+	}
+	mock.lockNotifyServerFailed.RLock()
+	calls = mock.calls.NotifyServerFailed
+	mock.lockNotifyServerFailed.RUnlock()
+	return calls
+}

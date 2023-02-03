@@ -44,9 +44,9 @@ type Pipeline struct {
 
 	pipelines map[ServerID]memproxy.Pipeline
 
-	needFlushServers []ServerID
+	needExecServers []ServerID
 	//revive:disable-next-line:nested-structs
-	needFlushSet map[ServerID]struct{}
+	needExecServerSet map[ServerID]struct{}
 
 	leaseSetServers map[string]ServerID
 }
@@ -77,26 +77,26 @@ func (p *Pipeline) getRoutePipeline(serverID ServerID) memproxy.Pipeline {
 		p.pipelines[serverID] = pipe
 	}
 
-	if p.needFlushSet == nil {
-		p.needFlushSet = map[ServerID]struct{}{
+	if p.needExecServerSet == nil {
+		p.needExecServerSet = map[ServerID]struct{}{
 			serverID: {},
 		}
-		p.needFlushServers = append(p.needFlushServers, serverID)
-	} else if _, existed := p.needFlushSet[serverID]; !existed {
-		p.needFlushSet[serverID] = struct{}{}
-		p.needFlushServers = append(p.needFlushServers, serverID)
+		p.needExecServers = append(p.needExecServers, serverID)
+	} else if _, existed := p.needExecServerSet[serverID]; !existed {
+		p.needExecServerSet[serverID] = struct{}{}
+		p.needExecServers = append(p.needExecServers, serverID)
 	}
 
 	return pipe
 }
 
 func (p *Pipeline) doExecuteForAllServers() {
-	for _, server := range p.needFlushServers {
+	for _, server := range p.needExecServers {
 		pipe := p.pipelines[server]
 		pipe.Execute()
 	}
-	p.needFlushServers = nil
-	p.needFlushSet = nil
+	p.needExecServers = nil
+	p.needExecServerSet = nil
 }
 
 // LeaseGet ...
