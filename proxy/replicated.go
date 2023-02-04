@@ -20,6 +20,9 @@ type replicatedRouteConfig struct {
 
 	// random from 0 => n - 1
 	randFunc func(n uint64) uint64
+
+	// default 1%
+	minPercent float64
 }
 
 type replicatedRouteSelector struct {
@@ -47,6 +50,13 @@ func WithRandFunc(randFunc func(n uint64) uint64) ReplicatedRouteOption {
 	}
 }
 
+// WithMinPercentage minimum request percentage to memcached servers
+func WithMinPercentage(percentage float64) ReplicatedRouteOption {
+	return func(conf *replicatedRouteConfig) {
+		conf.minPercent = percentage
+	}
+}
+
 // NewReplicatedRoute ...
 func NewReplicatedRoute(
 	servers []ServerID,
@@ -60,6 +70,7 @@ func NewReplicatedRoute(
 		randFunc: func(n uint64) uint64 {
 			return uint64(rand.Intn(int(n)))
 		},
+		minPercent: 1.0, // 1%
 	}
 
 	for _, opt := range options {
@@ -134,26 +145,16 @@ func (s *replicatedRouteSelector) SelectServer(string) ServerID {
 		return s.chosenServer
 	}
 
-	sum := float64(0)
-
 	for _, server := range s.remainingServers {
 		w := s.route.conf.memScore(s.route.stats.GetMemUsage(server))
-		sum += w
-
-		s.weightAccum = append(s.weightAccum, sum)
+		// current not accumulated
+		s.weightAccum = append(s.weightAccum, w)
 	}
 
-	n := s.route.conf.randFunc(randomMaxValues)
+	randVal := s.route.conf.randFunc(randomMaxValues)
 
-	chosenWeight := float64(n) / float64(randomMaxValues) * sum
-
-	index := 0
-	for i, w := range s.weightAccum {
-		if chosenWeight < w {
-			index = i
-			break
-		}
-	}
+	index, weights := computeChosenServer(s.weightAccum, s.route.conf.minPercent, randVal)
+	s.weightAccum = weights
 
 	s.alreadyChosen = true
 	s.chosenServer = s.remainingServers[index]
@@ -169,4 +170,55 @@ func (s *replicatedRouteSelector) SelectForDelete(string) []ServerID {
 func (s *replicatedRouteSelector) Reset() {
 	s.alreadyChosen = false
 	s.weightAccum = s.weightAccum[:0]
+}
+
+func computeWeightAccumWithMinPercent(
+	weights []float64, minPercent float64,
+) []float64 {
+	sum := 0.0
+	for _, w := range weights {
+		sum += w
+	}
+
+	belowMinCount := 0
+	belowMinWeightSum := float64(0)
+	minWeight := minPercent * sum / 100.0
+
+	for _, w := range weights {
+		if w < minWeight {
+			belowMinWeightSum += w
+			belowMinCount++
+		}
+	}
+
+	ratio := 100.0 / minPercent / float64(belowMinCount)
+	newMinWeight := (sum - belowMinWeightSum) / (ratio - 1.0)
+	for index, w := range weights {
+		if w < newMinWeight {
+			weights[index] = newMinWeight
+		}
+	}
+
+	for i := 1; i < len(weights); i++ {
+		weights[i] = weights[i] + weights[i-1]
+	}
+	return weights
+}
+
+func computeChosenServer(
+	weights []float64,
+	minPercent float64,
+	randVal uint64,
+) (int, []float64) {
+	weights = computeWeightAccumWithMinPercent(weights, minPercent)
+	sum := weights[len(weights)-1]
+
+	chosenWeight := float64(randVal) / float64(randomMaxValues) * sum
+
+	for i, w := range weights {
+		if chosenWeight < w {
+			return i, weights
+		}
+	}
+	return 0, weights
 }

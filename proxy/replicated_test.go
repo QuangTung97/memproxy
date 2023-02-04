@@ -15,7 +15,7 @@ type replicatedRouteTest struct {
 	selector Selector
 }
 
-func newReplicatedRouteTest() *replicatedRouteTest {
+func newReplicatedRouteTest(options ...ReplicatedRouteOption) *replicatedRouteTest {
 	r := &replicatedRouteTest{}
 
 	r.stats = &ServerStatsMock{
@@ -30,13 +30,18 @@ func newReplicatedRouteTest() *replicatedRouteTest {
 
 	r.stubServerFailed(false)
 
+	opts := []ReplicatedRouteOption{
+		WithRandFunc(randFunc),
+	}
+	opts = append(opts, options...)
+
 	r.route = NewReplicatedRoute(
 		[]ServerID{
 			serverID1,
 			serverID2,
 		},
 		r.stats,
-		WithRandFunc(randFunc),
+		opts...,
 	)
 	r.selector = r.route.NewSelector()
 
@@ -189,6 +194,41 @@ func TestReplicatedRoute(t *testing.T) {
 		assert.Equal(t, 1, len(r.stats.NotifyServerFailedCalls()))
 		assert.Equal(t, serverID1, r.stats.NotifyServerFailedCalls()[0].Server)
 	})
+
+	t.Run("with-mem-zero-use-default-1-percent-min", func(t *testing.T) {
+		r := newReplicatedRouteTest()
+
+		r.stubGetMem(
+			0, 50,
+		)
+
+		r.stubRand(1000) // 1 / 1000
+		assert.Equal(t, serverID1, r.selector.SelectServer(""))
+		assert.Equal(t, true, r.selector.HasNextAvailableServer())
+
+		assert.Equal(t, []ServerID{serverID1, serverID2}, r.selector.SelectForDelete(""))
+	})
+
+	t.Run("with-mem-zero-use-default-3-percent-min", func(t *testing.T) {
+		r := newReplicatedRouteTest(WithMinPercentage(3.0))
+
+		r.stubGetMem(
+			0, 50,
+			0, 50,
+		)
+
+		r.stubRand(30000)
+		assert.Equal(t, serverID2, r.selector.SelectServer(""))
+		assert.Equal(t, true, r.selector.HasNextAvailableServer())
+
+		r.selector.Reset()
+
+		r.stubRand(29000)
+		assert.Equal(t, serverID1, r.selector.SelectServer(""))
+		assert.Equal(t, true, r.selector.HasNextAvailableServer())
+
+		assert.Equal(t, []ServerID{serverID1, serverID2}, r.selector.SelectForDelete(""))
+	})
 }
 
 func TestReplicatedRoute_With_Real_Rand(*testing.T) {
@@ -219,4 +259,68 @@ func TestReplicatedRoute_With_Real_Rand(*testing.T) {
 	}
 
 	fmt.Println(counters)
+}
+
+func TestComputeWeightAccumWithMinPercent(t *testing.T) {
+	table := []struct {
+		name       string
+		weights    []float64
+		minPercent float64
+
+		newWeights []float64
+	}{
+		{
+			name:       "empty",
+			weights:    nil,
+			minPercent: 1.0,
+			newWeights: nil,
+		},
+		{
+			name:       "no-min",
+			weights:    []float64{10, 20, 30},
+			minPercent: 1.0,
+			newWeights: []float64{10, 30, 60},
+		},
+		{
+			name:       "with-one-zero",
+			weights:    []float64{10, 20, 0},
+			minPercent: 1.0,
+			newWeights: []float64{10, 30, 30 + 30.0/99.0},
+		},
+		{
+			name:       "with-one-zero-in-middle",
+			weights:    []float64{10, 20, 0, 30},
+			minPercent: 1.0,
+			newWeights: []float64{10, 30, 30 + 60.0/99.0, 60 + 60.0/99.0},
+		},
+		{
+			name:       "with-one-zero-in-the-beginning",
+			weights:    []float64{0, 10, 20, 30},
+			minPercent: 1.0,
+			newWeights: []float64{
+				60.0 / 99.0,
+				10 + 60.0/99.0,
+				30 + 60.0/99.0,
+				60 + 60.0/99.0,
+			},
+		},
+		{
+			name:       "with-two-zeros",
+			weights:    []float64{0, 10, 0, 30},
+			minPercent: 4.0,
+			newWeights: []float64{
+				40.0 / 11.5,
+				10 + 40.0/11.5,
+				10 + 80.0/11.5,
+				40 + 80.0/11.5,
+			},
+		},
+	}
+
+	for _, e := range table {
+		t.Run(e.name, func(t *testing.T) {
+			weights := computeWeightAccumWithMinPercent(e.weights, e.minPercent)
+			assert.Equal(t, e.newWeights, weights)
+		})
+	}
 }

@@ -1,4 +1,4 @@
-.PHONY: lint install-tools test test-race coverage benchmark compare new_to_old
+.PHONY: lint install-tools test test-race coverage benchmark compare new_to_old membench
 
 lint:
 	go fmt ./...
@@ -27,3 +27,6 @@ compare:
 
 new_to_old:
 	mv benchmark_new.txt benchmark_old.txt
+
+membench:
+	go test -run="^Benchmark" -bench=. -benchmem ./...
