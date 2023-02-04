@@ -49,7 +49,7 @@ func main() {
 			Host: "localhost",
 			Port: 11212,
 		},
-	}, 3)
+	}, 3, proxy.WithMinPercentage(5))
 	if err != nil {
 		panic(err)
 	}

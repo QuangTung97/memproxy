@@ -36,6 +36,8 @@ type StatsClient interface {
 	Close() error
 }
 
+const signalChanSize = 128
+
 // NewSimpleServerStats ...
 func NewSimpleServerStats[S ServerConfig](
 	servers []S,
@@ -52,7 +54,7 @@ func NewSimpleServerStats[S ServerConfig](
 		client := factory(server)
 
 		clients[server.GetID()] = client
-		clientSignals[server.GetID()] = make(chan struct{}, 10)
+		clientSignals[server.GetID()] = make(chan struct{}, signalChanSize)
 		statuses[server.GetID()] = &serverStatus{}
 	}
 
@@ -90,18 +92,30 @@ func NewSimpleServerStats[S ServerConfig](
 func (s *SimpleServerStats) clientGetMemory(server ServerID, client StatsClient) StatsClient {
 	status := s.statuses[server]
 
+	if status.failed.Load() {
+		_ = client.Close()
+		client = s.newClientFunc(server)
+	}
+
 	mem, err := client.GetMemUsage()
+	fmt.Println("MEM:", server, mem, err) // TODO remove
 	if err != nil {
 		// TODO log error
 		status.failed.Store(true)
-
-		_ = client.Close()
-		newClient := s.newClientFunc(server)
-		return newClient
+		return client
 	}
 	status.failed.Store(false)
 	status.memory.Store(mem)
 	return client
+}
+
+func drainSignal(signal <-chan struct{}) {
+	for i := 0; i < signalChanSize-1; i++ {
+		select {
+		case <-signal:
+		default:
+		}
+	}
 }
 
 func (s *SimpleServerStats) handleClient(server ServerID, client StatsClient, signal <-chan struct{}) {
@@ -112,6 +126,8 @@ func (s *SimpleServerStats) handleClient(server ServerID, client StatsClient, si
 				_ = client.Close()
 				return
 			}
+			drainSignal(signal)
+
 			client = s.clientGetMemory(server, client)
 
 		case <-time.After(30 * time.Second): // TODO Config
@@ -127,9 +143,6 @@ func (s *SimpleServerStats) IsServerFailed(server ServerID) bool {
 
 // NotifyServerFailed ...
 func (s *SimpleServerStats) NotifyServerFailed(server ServerID) {
-	status := s.statuses[server]
-	status.failed.Store(true)
-
 	ch := s.clientSignals[server]
 	select {
 	case ch <- struct{}{}:

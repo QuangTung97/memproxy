@@ -94,14 +94,19 @@ func (r *replicatedRoute) NewSelector() Selector {
 	return s
 }
 
-// SetFailedServer ...
-func (s *replicatedRouteSelector) SetFailedServer(server ServerID) {
+func (s *replicatedRouteSelector) getFailedServers() map[ServerID]struct{} {
 	if s.failedServers == nil {
 		s.failedServers = map[ServerID]struct{}{}
 	}
+	return s.failedServers
+}
 
-	_, existed := s.failedServers[server]
-	s.failedServers[server] = struct{}{}
+// SetFailedServer ...
+func (s *replicatedRouteSelector) SetFailedServer(server ServerID) {
+	failed := s.getFailedServers()
+
+	_, existed := failed[server]
+	failed[server] = struct{}{}
 
 	if !existed {
 		s.Reset()
@@ -119,12 +124,12 @@ func (s *replicatedRouteSelector) computeRemainingServers() []ServerID {
 	remainingServers := make([]ServerID, 0, len(s.route.configServers))
 	for _, server := range s.route.configServers {
 		if s.route.stats.IsServerFailed(server) {
-			s.failedServers[server] = struct{}{}
+			s.getFailedServers()[server] = struct{}{}
 			continue
 		}
 
 		if s.failedServers != nil {
-			_, existed := s.failedServers[server]
+			_, existed := s.getFailedServers()[server]
 			if existed {
 				continue
 			}

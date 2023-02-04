@@ -146,6 +146,9 @@ func TestSimpleServerStats(t *testing.T) {
 		s.stubGetMem(serverID1, 0, errors.New("some error"))
 		newClient := &StatsClientMock{
 			CloseFunc: func() error { return nil },
+			GetMemUsageFunc: func() (uint64, error) {
+				return 888, nil
+			},
 		}
 		s.newFunc = func(conf SimpleServerConfig) StatsClient {
 			return newClient
@@ -156,9 +159,20 @@ func TestSimpleServerStats(t *testing.T) {
 
 		assert.Equal(t, float64(8000), s.stats.GetMemUsage(serverID1))
 
+		assert.Equal(t, true, s.stats.IsServerFailed(serverID1))
+		assert.Equal(t, false, s.stats.IsServerFailed(serverID2))
+
+		// Notify Again
+		s.stats.NotifyServerFailed(serverID1)
+		time.Sleep(40 * time.Millisecond)
+
+		assert.Equal(t, float64(888), s.stats.GetMemUsage(serverID1))
+
 		// Check client calls
 		getCalls = s.clients[serverID1].GetMemUsageCalls()
 		assert.Equal(t, 2, len(getCalls))
+
+		assert.Equal(t, 1, len(newClient.GetMemUsageCalls()))
 
 		assert.Equal(t, 3, len(s.getNewArgs()))
 		assert.Equal(t, SimpleServerConfig{
@@ -168,7 +182,7 @@ func TestSimpleServerStats(t *testing.T) {
 		}, s.getNewArgs()[2])
 
 		// Check Failed Again
-		assert.Equal(t, true, s.stats.IsServerFailed(serverID1))
+		assert.Equal(t, false, s.stats.IsServerFailed(serverID1))
 		assert.Equal(t, false, s.stats.IsServerFailed(serverID2))
 
 		// Check Call After Shutdown
