@@ -15,15 +15,12 @@ type Memcache struct {
 // New ...
 func New[S ServerConfig](
 	conf Config[S],
-	newFunc func(conf S) (memproxy.Memcache, error),
+	newFunc func(conf S) memproxy.Memcache,
 ) (*Memcache, error) {
 	clients := map[ServerID]memproxy.Memcache{}
 
 	for _, server := range conf.Servers {
-		client, err := newFunc(server)
-		if err != nil {
-			return nil, err
-		}
+		client := newFunc(server)
 		clients[server.GetID()] = client
 	}
 
@@ -230,12 +227,12 @@ func NewSimpleReplicatedMemcache(
 
 	mc, err := New[SimpleServerConfig](
 		conf,
-		func(conf SimpleServerConfig) (memproxy.Memcache, error) {
+		func(conf SimpleServerConfig) memproxy.Memcache {
 			client, err := memcache.New(conf.Address(), numConnsPerServer)
 			if err != nil {
-				return nil, err
+				panic(err)
 			}
-			return memproxy.NewPlainMemcache(client, 3), nil
+			return memproxy.NewPlainMemcache(client, 3)
 		},
 	)
 	if err != nil {

@@ -24,7 +24,7 @@ type SimpleServerStats struct {
 
 	statuses map[ServerID]*serverStatus
 
-	newClientFunc func(server ServerID) (StatsClient, error)
+	newClientFunc func(server ServerID) StatsClient
 }
 
 // StatsClient ...
@@ -39,7 +39,7 @@ type StatsClient interface {
 // NewSimpleServerStats ...
 func NewSimpleServerStats[S ServerConfig](
 	servers []S,
-	factory func(conf S) (StatsClient, error),
+	factory func(conf S) StatsClient,
 ) (*SimpleServerStats, error) {
 	clients := map[ServerID]StatsClient{}
 	clientSignals := map[ServerID]chan struct{}{}
@@ -49,11 +49,7 @@ func NewSimpleServerStats[S ServerConfig](
 	for _, server := range servers {
 		confMap[server.GetID()] = server
 
-		client, err := factory(server)
-		if err != nil {
-			// TODO Close
-			return nil, err
-		}
+		client := factory(server)
 
 		clients[server.GetID()] = client
 		clientSignals[server.GetID()] = make(chan struct{}, 10)
@@ -63,7 +59,7 @@ func NewSimpleServerStats[S ServerConfig](
 	s := &SimpleServerStats{
 		clientSignals: clientSignals,
 		statuses:      statuses,
-		newClientFunc: func(server ServerID) (StatsClient, error) {
+		newClientFunc: func(server ServerID) StatsClient {
 			return factory(confMap[server])
 		},
 	}
@@ -100,11 +96,7 @@ func (s *SimpleServerStats) clientGetMemory(server ServerID, client StatsClient)
 		status.failed.Store(true)
 
 		_ = client.Close()
-		newClient, err := s.newClientFunc(server)
-		if err != nil {
-			// TODO log error
-			return client
-		}
+		newClient := s.newClientFunc(server)
 		return newClient
 	}
 	status.failed.Store(false)
@@ -164,14 +156,11 @@ type simpleStatsClient struct {
 }
 
 // NewSimpleStatsClient ...
-func NewSimpleStatsClient(conf SimpleServerConfig) (StatsClient, error) {
-	client, err := mcstats.New(fmt.Sprintf("%s:%d", conf.Host, conf.Port))
-	if err != nil {
-		return nil, err
-	}
+func NewSimpleStatsClient(conf SimpleServerConfig) StatsClient {
+	client := mcstats.New(fmt.Sprintf("%s:%d", conf.Host, conf.Port))
 	return &simpleStatsClient{
 		client: client,
-	}, nil
+	}
 }
 
 // GetMemUsage ...
@@ -180,7 +169,14 @@ func (s *simpleStatsClient) GetMemUsage() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return slabs.TotalMalloced, nil
+
+	mem := uint64(0)
+	for _, slabID := range slabs.SlabIDs {
+		slab := slabs.Slabs[slabID]
+		mem += uint64(slab.ChunkSize) * slab.UsedChunks
+	}
+
+	return mem, nil
 }
 
 // Close ...

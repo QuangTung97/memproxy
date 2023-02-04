@@ -10,11 +10,10 @@ import (
 )
 
 func TestSimpleStatsClient(t *testing.T) {
-	client, err := NewSimpleStatsClient(SimpleServerConfig{
+	client := NewSimpleStatsClient(SimpleServerConfig{
 		Host: "localhost",
 		Port: 11211,
 	})
-	assert.Equal(t, nil, err)
 	fmt.Println(client.GetMemUsage())
 
 	assert.Equal(t, nil, client.Close())
@@ -27,7 +26,7 @@ type serverStatsTest struct {
 	mut     sync.Mutex
 	newArgs []SimpleServerConfig
 
-	newFunc func(conf SimpleServerConfig) (StatsClient, error)
+	newFunc func(conf SimpleServerConfig) StatsClient
 }
 
 func (s *serverStatsTest) getNewArgs() []SimpleServerConfig {
@@ -55,8 +54,8 @@ func newServerStatsTest(t *testing.T) *serverStatsTest {
 	s.stubGetMem(serverID1, 8000, nil)
 	s.stubGetMem(serverID2, 9000, nil)
 
-	s.newFunc = func(conf SimpleServerConfig) (StatsClient, error) {
-		return s.clients[conf.ID], nil
+	s.newFunc = func(conf SimpleServerConfig) StatsClient {
+		return s.clients[conf.ID]
 	}
 
 	var err error
@@ -71,7 +70,7 @@ func newServerStatsTest(t *testing.T) *serverStatsTest {
 			Host: "localhost",
 			Port: 11202,
 		},
-	}, func(conf SimpleServerConfig) (StatsClient, error) {
+	}, func(conf SimpleServerConfig) StatsClient {
 		s.mut.Lock()
 		s.newArgs = append(s.newArgs, conf)
 		s.mut.Unlock()
@@ -148,8 +147,8 @@ func TestSimpleServerStats(t *testing.T) {
 		newClient := &StatsClientMock{
 			CloseFunc: func() error { return nil },
 		}
-		s.newFunc = func(conf SimpleServerConfig) (StatsClient, error) {
-			return newClient, nil
+		s.newFunc = func(conf SimpleServerConfig) StatsClient {
+			return newClient
 		}
 
 		s.stats.NotifyServerFailed(serverID1)
@@ -178,49 +177,5 @@ func TestSimpleServerStats(t *testing.T) {
 		assert.Equal(t, 1, len(s.clients[serverID1].CloseCalls()))
 		assert.Equal(t, 1, len(s.clients[serverID2].CloseCalls()))
 		assert.Equal(t, 1, len(newClient.CloseCalls()))
-	})
-
-	t.Run("server-get-mem-error--do-close-and-new-client--but-returns-error", func(t *testing.T) {
-		s := newServerStatsTest(t)
-
-		getCalls := s.clients[serverID1].GetMemUsageCalls()
-		assert.Equal(t, 1, len(getCalls))
-
-		assert.Equal(t, float64(8000), s.stats.GetMemUsage(serverID1))
-		assert.Equal(t, float64(9000), s.stats.GetMemUsage(serverID2))
-
-		assert.Equal(t, false, s.stats.IsServerFailed(serverID1))
-		assert.Equal(t, false, s.stats.IsServerFailed(serverID2))
-
-		s.stubGetMem(serverID1, 0, errors.New("some error"))
-		s.newFunc = func(conf SimpleServerConfig) (StatsClient, error) {
-			return nil, errors.New("new error")
-		}
-
-		s.stats.NotifyServerFailed(serverID1)
-		time.Sleep(10 * time.Millisecond)
-
-		assert.Equal(t, float64(8000), s.stats.GetMemUsage(serverID1))
-
-		// Check client calls
-		getCalls = s.clients[serverID1].GetMemUsageCalls()
-		assert.Equal(t, 2, len(getCalls))
-
-		assert.Equal(t, 3, len(s.getNewArgs()))
-		assert.Equal(t, SimpleServerConfig{
-			ID:   serverID1,
-			Host: "localhost",
-			Port: 11201,
-		}, s.getNewArgs()[2])
-
-		// Check Failed Again
-		assert.Equal(t, true, s.stats.IsServerFailed(serverID1))
-		assert.Equal(t, false, s.stats.IsServerFailed(serverID2))
-
-		// Check Call After Shutdown
-		s.stats.Shutdown()
-
-		assert.Equal(t, 2, len(s.clients[serverID1].CloseCalls()))
-		assert.Equal(t, 1, len(s.clients[serverID2].CloseCalls()))
 	})
 }

@@ -120,13 +120,13 @@ func newPipelineTest(t *testing.T) *pipelineTest {
 	mc, err := New[SimpleServerConfig](Config[SimpleServerConfig]{
 		Servers: []SimpleServerConfig{server1, server2},
 		Route:   route,
-	}, func(conf SimpleServerConfig) (memproxy.Memcache, error) {
+	}, func(conf SimpleServerConfig) memproxy.Memcache {
 		index := len(newCalls)
 		newCalls = append(newCalls, conf)
 		return []memproxy.Memcache{
 			mc1,
 			mc2,
-		}[index], nil
+		}[index]
 	})
 	assert.Equal(t, nil, err)
 	assert.Equal(t, []SimpleServerConfig{server1, server2}, newCalls)
