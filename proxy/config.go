@@ -1,5 +1,7 @@
 package proxy
 
+import "fmt"
+
 // ServerID ...
 type ServerID int
 
@@ -51,6 +53,11 @@ type SimpleServerConfig struct {
 // GetID ...
 func (c SimpleServerConfig) GetID() ServerID {
 	return c.ID
+}
+
+// Address ...
+func (c SimpleServerConfig) Address() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
 }
 
 // ServerStats is thread safe

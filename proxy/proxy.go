@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"github.com/QuangTung97/go-memcache/memcache"
 	"github.com/QuangTung97/memproxy"
 )
 
@@ -204,4 +205,46 @@ func (p *Pipeline) Finish() {
 // LowerSession returns a lower priority session
 func (p *Pipeline) LowerSession() memproxy.Session {
 	return p.sess.GetLower()
+}
+
+// NewSimpleReplicatedMemcache ...
+func NewSimpleReplicatedMemcache(
+	servers []SimpleServerConfig,
+	numConnsPerServer int,
+	options ...ReplicatedRouteOption,
+) (*Memcache, func(), error) {
+	serverIDs := make([]ServerID, 0, len(servers))
+	for _, s := range servers {
+		serverIDs = append(serverIDs, s.GetID())
+	}
+
+	stats, err := NewSimpleServerStats[SimpleServerConfig](servers, NewSimpleStatsClient)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	conf := Config[SimpleServerConfig]{
+		Servers: servers,
+		Route:   NewReplicatedRoute(serverIDs, stats, options...),
+	}
+
+	mc, err := New[SimpleServerConfig](
+		conf,
+		func(conf SimpleServerConfig) (memproxy.Memcache, error) {
+			client, err := memcache.New(conf.Address(), numConnsPerServer)
+			if err != nil {
+				return nil, err
+			}
+			return memproxy.NewPlainMemcache(client, 3), nil
+		},
+	)
+	if err != nil {
+		stats.Shutdown()
+		return nil, nil, err
+	}
+
+	return mc, func() {
+		_ = mc.Close()
+		stats.Shutdown()
+	}, nil
 }

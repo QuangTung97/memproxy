@@ -31,13 +31,16 @@ func newSessionTest() *sessionTest {
 		return
 	}
 
-	provider := NewSessionProvider(func() time.Time {
-		s.nowCalls++
-		return s.nowFunc()
-	}, func(d time.Duration) {
-		s.sleepCalls = append(s.sleepCalls, d)
-		s.sleepFunc(d)
-	})
+	provider := NewSessionProvider(
+		WithSessionNowFunc(func() time.Time {
+			s.nowCalls++
+			return s.nowFunc()
+		}),
+		WithSessionSleepFunc(func(d time.Duration) {
+			s.sleepCalls = append(s.sleepCalls, d)
+			s.sleepFunc(d)
+		}),
+	)
 
 	s.sess = provider.New()
 	return s

@@ -9,7 +9,6 @@ import (
 	"github.com/QuangTung97/memproxy/mocks"
 	"github.com/stretchr/testify/assert"
 	"testing"
-	"time"
 )
 
 type customerUsage struct {
@@ -78,7 +77,7 @@ type hashTest struct {
 }
 
 func newFakeSession() memproxy.Session {
-	return memproxy.NewSessionProvider(time.Now, time.Sleep).New()
+	return memproxy.NewSessionProvider().New()
 }
 
 func newHashTest() *hashTest {

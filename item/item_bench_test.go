@@ -3,7 +3,6 @@ package item
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"github.com/QuangTung97/go-memcache/memcache"
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/proxy"
@@ -11,7 +10,6 @@ import (
 	"runtime"
 	"strconv"
 	"testing"
-	"time"
 )
 
 type benchValue struct {
@@ -76,7 +74,7 @@ func newMemcache(b *testing.B) (memproxy.Memcache, memproxy.SessionProvider) {
 	mc := memproxy.NewPlainMemcache(client, 3)
 	b.Cleanup(func() { _ = mc.Close() })
 
-	sess := memproxy.NewSessionProvider(time.Now, time.Sleep)
+	sess := memproxy.NewSessionProvider()
 	return mc, sess
 }
 
@@ -93,35 +91,18 @@ func newMemcacheWithProxy(b *testing.B) (memproxy.Memcache, memproxy.SessionProv
 		Host: "localhost",
 		Port: 11211,
 	}
-	servers := []proxy.SimpleServerConfig{server1}
 
-	stats, err := proxy.NewSimpleServerStats(servers, proxy.NewSimpleStatsClient)
+	mc, closeFunc, err := proxy.NewSimpleReplicatedMemcache([]proxy.SimpleServerConfig{server1}, 1)
 	if err != nil {
 		panic(err)
 	}
-
-	mc, err := proxy.New[proxy.SimpleServerConfig](
-		proxy.Config[proxy.SimpleServerConfig]{
-			Servers: servers,
-			Route:   proxy.NewReplicatedRoute([]proxy.ServerID{server1.ID}, stats),
-		},
-		func(conf proxy.SimpleServerConfig) (memproxy.Memcache, error) {
-			client, err := memcache.New(fmt.Sprintf("%s:%d", conf.Host, conf.Port), 1)
-			if err != nil {
-				return nil, err
-			}
-			return memproxy.NewPlainMemcache(client, 3), nil
-		},
-	)
-	b.Cleanup(func() {
-		_ = mc.Close()
-	})
+	b.Cleanup(closeFunc)
 
 	if err != nil {
 		panic(err)
 	}
 
-	sess := memproxy.NewSessionProvider(time.Now, time.Sleep)
+	sess := memproxy.NewSessionProvider()
 	return mc, sess
 }
 

@@ -8,7 +8,6 @@ import (
 	"github.com/QuangTung97/memproxy/mocks"
 	"github.com/stretchr/testify/assert"
 	"testing"
-	"time"
 )
 
 type pipelineTest struct {
@@ -132,7 +131,7 @@ func newPipelineTest(t *testing.T) *pipelineTest {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, []SimpleServerConfig{server1, server2}, newCalls)
 
-	sessProvider := memproxy.NewSessionProvider(time.Now, time.Sleep)
+	sessProvider := memproxy.NewSessionProvider()
 
 	p.client = mc
 	p.route = route

@@ -9,14 +9,42 @@ type sessionProviderImpl struct {
 
 var _ SessionProvider = &sessionProviderImpl{}
 
+type sessionProviderConf struct {
+	nowFn   func() time.Time
+	sleepFn func(d time.Duration)
+}
+
+// SessionProviderOption ...
+type SessionProviderOption func(conf *sessionProviderConf)
+
+// WithSessionNowFunc ...
+func WithSessionNowFunc(nowFn func() time.Time) SessionProviderOption {
+	return func(conf *sessionProviderConf) {
+		conf.nowFn = nowFn
+	}
+}
+
+// WithSessionSleepFunc ...
+func WithSessionSleepFunc(sleepFn func(d time.Duration)) SessionProviderOption {
+	return func(conf *sessionProviderConf) {
+		conf.sleepFn = sleepFn
+	}
+}
+
 // NewSessionProvider is THREAD SAFE
-func NewSessionProvider(
-	nowFn func() time.Time,
-	sleepFn func(d time.Duration),
-) SessionProvider {
+func NewSessionProvider(options ...SessionProviderOption) SessionProvider {
+	conf := &sessionProviderConf{
+		nowFn:   time.Now,
+		sleepFn: time.Sleep,
+	}
+
+	for _, opt := range options {
+		opt(conf)
+	}
+
 	return &sessionProviderImpl{
-		nowFn:   nowFn,
-		sleepFn: sleepFn,
+		nowFn:   conf.nowFn,
+		sleepFn: conf.sleepFn,
 	}
 }
 

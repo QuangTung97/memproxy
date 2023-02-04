@@ -1,12 +1,10 @@
 package proxy
 
 import (
-	"fmt"
 	"github.com/QuangTung97/go-memcache/memcache"
 	"github.com/QuangTung97/memproxy"
 	"github.com/stretchr/testify/assert"
 	"testing"
-	"time"
 )
 
 func clearMemcache(c *memcache.Client) {
@@ -18,7 +16,7 @@ func clearMemcache(c *memcache.Client) {
 	}
 }
 
-func newMemcacheWithProxy() (memproxy.Memcache, memproxy.SessionProvider) {
+func newMemcacheWithProxy(t *testing.T) (memproxy.Memcache, memproxy.SessionProvider) {
 	clearClient, err := memcache.New("localhost:11211", 1)
 	if err != nil {
 		panic(err)
@@ -34,37 +32,20 @@ func newMemcacheWithProxy() (memproxy.Memcache, memproxy.SessionProvider) {
 		Host: "localhost",
 		Port: 11211,
 	}
-	servers := []SimpleServerConfig{server1}
 
-	stats, err := NewSimpleServerStats(servers, NewSimpleStatsClient)
+	mc, closeFunc, err := NewSimpleReplicatedMemcache([]SimpleServerConfig{server1}, 1)
 	if err != nil {
 		panic(err)
 	}
+	t.Cleanup(closeFunc)
 
-	mc, err := New[SimpleServerConfig](
-		Config[SimpleServerConfig]{
-			Servers: servers,
-			Route:   NewReplicatedRoute([]ServerID{server1.ID}, stats),
-		},
-		func(conf SimpleServerConfig) (memproxy.Memcache, error) {
-			client, err := memcache.New(fmt.Sprintf("%s:%d", conf.Host, conf.Port), 1)
-			if err != nil {
-				return nil, err
-			}
-			return memproxy.NewPlainMemcache(client, 3), nil
-		},
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	sess := memproxy.NewSessionProvider(time.Now, time.Sleep)
+	sess := memproxy.NewSessionProvider()
 	return mc, sess
 }
 
 func TestProxyIntegration(t *testing.T) {
 	t.Run("simple-lease-get-set", func(t *testing.T) {
-		mc, provider := newMemcacheWithProxy()
+		mc, provider := newMemcacheWithProxy(t)
 		pipe := mc.Pipeline(newContext(), provider.New())
 		defer pipe.Finish()
 
@@ -88,7 +69,7 @@ func TestProxyIntegration(t *testing.T) {
 	})
 
 	t.Run("simple-lease-get-set-multi", func(t *testing.T) {
-		mc, provider := newMemcacheWithProxy()
+		mc, provider := newMemcacheWithProxy(t)
 		pipe := mc.Pipeline(newContext(), provider.New())
 		defer pipe.Finish()
 
@@ -140,7 +121,7 @@ func TestProxyIntegration(t *testing.T) {
 	})
 
 	t.Run("lease-finish-and-then-new-pipeline", func(t *testing.T) {
-		mc, provider := newMemcacheWithProxy()
+		mc, provider := newMemcacheWithProxy(t)
 		pipe1 := mc.Pipeline(newContext(), provider.New())
 
 		const key1 = "KEY01"

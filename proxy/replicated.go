@@ -176,7 +176,11 @@ func computeWeightAccumWithMinPercent(
 	weights []float64, minPercent float64,
 ) []float64 {
 	sum := 0.0
-	for _, w := range weights {
+	for i, w := range weights {
+		if w < 1.0 {
+			weights[i] = 1.0
+			w = 1.0
+		}
 		sum += w
 	}
 
