@@ -20,6 +20,9 @@ var _ Memcache = &MemcacheMock{}
 //
 //		// make and configure a mocked Memcache
 //		mockedMemcache := &MemcacheMock{
+//			CloseFunc: func() error {
+//				panic("mock out the Close method")
+//			},
 //			PipelineFunc: func(ctx context.Context, sess memproxy.Session, options ...memproxy.PipelineOption) memproxy.Pipeline {
 //				panic("mock out the Pipeline method")
 //			},
@@ -30,11 +33,17 @@ var _ Memcache = &MemcacheMock{}
 //
 //	}
 type MemcacheMock struct {
+	// CloseFunc mocks the Close method.
+	CloseFunc func() error
+
 	// PipelineFunc mocks the Pipeline method.
 	PipelineFunc func(ctx context.Context, sess memproxy.Session, options ...memproxy.PipelineOption) memproxy.Pipeline
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// Close holds details about calls to the Close method.
+		Close []struct {
+		}
 		// Pipeline holds details about calls to the Pipeline method.
 		Pipeline []struct {
 			// Ctx is the ctx argument value.
@@ -45,7 +54,35 @@ type MemcacheMock struct {
 			Options []memproxy.PipelineOption
 		}
 	}
+	lockClose    sync.RWMutex
 	lockPipeline sync.RWMutex
+}
+
+// Close calls CloseFunc.
+func (mock *MemcacheMock) Close() error {
+	if mock.CloseFunc == nil {
+		panic("MemcacheMock.CloseFunc: method is nil but Memcache.Close was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockClose.Lock()
+	mock.calls.Close = append(mock.calls.Close, callInfo)
+	mock.lockClose.Unlock()
+	return mock.CloseFunc()
+}
+
+// CloseCalls gets all the calls that were made to Close.
+// Check the length with:
+//
+//	len(mockedMemcache.CloseCalls())
+func (mock *MemcacheMock) CloseCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockClose.RLock()
+	calls = mock.calls.Close
+	mock.lockClose.RUnlock()
+	return calls
 }
 
 // Pipeline calls PipelineFunc.

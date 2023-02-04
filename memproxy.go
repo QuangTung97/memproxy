@@ -9,6 +9,9 @@ import (
 // implementations of this interface must be thread safe
 type Memcache interface {
 	Pipeline(ctx context.Context, sess Session, options ...PipelineOption) Pipeline
+
+	// Close ...
+	Close() error
 }
 
 // Pipeline represents a generic Pipeline

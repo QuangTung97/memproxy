@@ -15,7 +15,7 @@ type Memcache struct {
 func New[S ServerConfig](
 	conf Config[S],
 	newFunc func(conf S) (memproxy.Memcache, error),
-) (memproxy.Memcache, error) {
+) (*Memcache, error) {
 	clients := map[ServerID]memproxy.Memcache{}
 
 	for _, server := range conf.Servers {
@@ -68,6 +68,18 @@ func (m *Memcache) Pipeline(
 
 		leaseSetServers: map[string]ServerID{},
 	}
+}
+
+// Close TODO testing
+func (m *Memcache) Close() error {
+	var lastErr error
+	for _, client := range m.clients {
+		err := client.Close()
+		if err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
 }
 
 func (p *Pipeline) getRoutePipeline(serverID ServerID) memproxy.Pipeline {
@@ -169,16 +181,24 @@ func (*Pipeline) Delete(
 	string, memproxy.DeleteOptions,
 ) func() (memproxy.DeleteResponse, error) {
 	return func() (memproxy.DeleteResponse, error) {
+		// TODO
 		return memproxy.DeleteResponse{}, nil
 	}
 }
 
 // Execute ...
-func (*Pipeline) Execute() {
+func (p *Pipeline) Execute() {
+	p.doExecuteForAllServers()
 }
 
 // Finish ...
-func (*Pipeline) Finish() {
+func (p *Pipeline) Finish() {
+	for _, server := range p.needExecServers {
+		pipe := p.pipelines[server]
+		pipe.Finish()
+	}
+	p.needExecServers = nil
+	p.needExecServerSet = nil
 }
 
 // LowerSession returns a lower priority session

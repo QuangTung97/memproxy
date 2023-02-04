@@ -3,8 +3,10 @@ package item
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"github.com/QuangTung97/go-memcache/memcache"
 	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/proxy"
 	"github.com/stretchr/testify/assert"
 	"runtime"
 	"strconv"
@@ -64,7 +66,7 @@ func clearMemcache(c *memcache.Client) {
 	}
 }
 
-func newMemcache() (memproxy.Memcache, memproxy.SessionProvider) {
+func newMemcache(b *testing.B) (memproxy.Memcache, memproxy.SessionProvider) {
 	client, err := memcache.New("localhost:11211", 1)
 	if err != nil {
 		panic(err)
@@ -72,12 +74,59 @@ func newMemcache() (memproxy.Memcache, memproxy.SessionProvider) {
 	clearMemcache(client)
 
 	mc := memproxy.NewPlainMemcache(client, 3)
+	b.Cleanup(func() { _ = mc.Close() })
+
+	sess := memproxy.NewSessionProvider(time.Now, time.Sleep)
+	return mc, sess
+}
+
+func newMemcacheWithProxy(b *testing.B) (memproxy.Memcache, memproxy.SessionProvider) {
+	clearClient, err := memcache.New("localhost:11211", 1)
+	if err != nil {
+		panic(err)
+	}
+	clearMemcache(clearClient)
+	defer func() { _ = clearClient.Close() }()
+
+	server1 := proxy.SimpleServerConfig{
+		ID:   1,
+		Host: "localhost",
+		Port: 11211,
+	}
+	servers := []proxy.SimpleServerConfig{server1}
+
+	stats, err := proxy.NewSimpleServerStats(servers, proxy.NewSimpleStatsClient)
+	if err != nil {
+		panic(err)
+	}
+
+	mc, err := proxy.New[proxy.SimpleServerConfig](
+		proxy.Config[proxy.SimpleServerConfig]{
+			Servers: servers,
+			Route:   proxy.NewReplicatedRoute([]proxy.ServerID{server1.ID}, stats),
+		},
+		func(conf proxy.SimpleServerConfig) (memproxy.Memcache, error) {
+			client, err := memcache.New(fmt.Sprintf("%s:%d", conf.Host, conf.Port), 1)
+			if err != nil {
+				return nil, err
+			}
+			return memproxy.NewPlainMemcache(client, 3), nil
+		},
+	)
+	b.Cleanup(func() {
+		_ = mc.Close()
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
 	sess := memproxy.NewSessionProvider(time.Now, time.Sleep)
 	return mc, sess
 }
 
 func BenchmarkItemGetSingle(b *testing.B) {
-	mc, sess := newMemcache()
+	mc, sess := newMemcache(b)
 
 	b.ResetTimer()
 
@@ -114,8 +163,12 @@ func BenchmarkItemGetSingle(b *testing.B) {
 	}
 }
 
-func benchmarkWithBatch(b *testing.B, batchSize int) {
-	mc, sess := newMemcache()
+func benchmarkWithBatch(
+	b *testing.B,
+	newFunc func(b *testing.B) (memproxy.Memcache, memproxy.SessionProvider),
+	batchSize int,
+) {
+	mc, sess := newFunc(b)
 
 	b.ResetTimer()
 
@@ -154,11 +207,19 @@ func benchmarkWithBatch(b *testing.B, batchSize int) {
 }
 
 func BenchmarkItemGetByBatch1000(b *testing.B) {
-	benchmarkWithBatch(b, 1000) // => 400K / seconds
+	benchmarkWithBatch(b, newMemcache, 1000) // => 400K / seconds
 }
 
 func BenchmarkItemGetByBatch100(b *testing.B) {
-	benchmarkWithBatch(b, 100) // => 348K / seconds
+	benchmarkWithBatch(b, newMemcache, 100) // => 348K / seconds
+}
+
+func BenchmarkItemWithProxyGetByBatch1000(b *testing.B) {
+	benchmarkWithBatch(b, newMemcacheWithProxy, 1000) // => 400K / seconds
+}
+
+func BenchmarkItemWithProxyGetByBatch100(b *testing.B) {
+	benchmarkWithBatch(b, newMemcacheWithProxy, 100) // => 348K / seconds
 }
 
 func BenchmarkHeapAlloc(b *testing.B) {

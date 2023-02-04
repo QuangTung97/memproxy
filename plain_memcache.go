@@ -37,6 +37,11 @@ func (m *plainMemcacheImpl) Pipeline(_ context.Context, sess Session, _ ...Pipel
 	}
 }
 
+// Close ...
+func (m *plainMemcacheImpl) Close() error {
+	return m.client.Close()
+}
+
 func (p *plainPipelineImpl) LowerSession() Session {
 	return p.sess.GetLower()
 }
