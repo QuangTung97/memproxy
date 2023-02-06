@@ -45,6 +45,14 @@ func leaseSetFuncAction(key string) string {
 	return fmt.Sprintf("lease-set-func: %s", key)
 }
 
+func deleteAction(key string) string {
+	return fmt.Sprintf("delete: %s", key)
+}
+
+func deleteFuncAction(key string) string {
+	return fmt.Sprintf("delete-func: %s", key)
+}
+
 func (p *pipelineTest) appendAction(s string) {
 	p.actions = append(p.actions, s)
 }
@@ -148,6 +156,12 @@ func (p *pipelineTest) stubSelect(idList ...ServerID) {
 	}
 }
 
+func (p *pipelineTest) stubSelectForDelete(idList ...ServerID) {
+	p.selector.SelectForDeleteFunc = func(key string) []ServerID {
+		return idList
+	}
+}
+
 func (p *pipelineTest) stubHasNextAvail(hasNext bool) {
 	p.selector.HasNextAvailableServerFunc = func() bool {
 		return hasNext
@@ -195,6 +209,19 @@ func (p *pipelineTest) stubLeaseSet1(resp memproxy.LeaseSetResponse, err error) 
 
 func (p *pipelineTest) stubLeaseSet2(resp memproxy.LeaseSetResponse, err error) {
 	p.stubPipeLeaseSet(p.pipe2, resp, err)
+}
+
+func (p *pipelineTest) stubPipeDelete(
+	pipe *mocks.PipelineMock,
+	err error,
+) {
+	pipe.DeleteFunc = func(key string, options memproxy.DeleteOptions) func() (memproxy.DeleteResponse, error) {
+		p.appendAction(deleteAction(key))
+		return func() (memproxy.DeleteResponse, error) {
+			p.appendAction(deleteFuncAction(key))
+			return memproxy.DeleteResponse{}, err
+		}
+	}
 }
 
 func TestPipeline(t *testing.T) {
@@ -369,6 +396,40 @@ func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
 		assert.Equal(t, []byte("set data 01"), setCalls[0].Data)
 	})
 
+	t.Run("lease-get-lease-rejected-then-set-no-fallback-on-error", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		p.stubSelect(serverID1)
+		p.stubLeaseGet1(memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseRejected,
+			CAS:    2255,
+		}, nil)
+
+		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+		resp, err := fn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseRejected,
+			CAS:    2255,
+		}, resp)
+
+		// Do Lease Set
+		p.stubLeaseSet1(memproxy.LeaseSetResponse{}, nil)
+
+		setFn := p.pipe.LeaseSet("KEY01", []byte("set data 01"), 2255, memproxy.LeaseSetOptions{})
+		setResp, err := setFn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseSetResponse{}, setResp)
+
+		setCalls := p.pipe1.LeaseSetCalls()
+		assert.Equal(t, 1, len(setCalls))
+		assert.Equal(t, "KEY01", setCalls[0].Key)
+		assert.Equal(t, uint64(2255), setCalls[0].Cas)
+		assert.Equal(t, []byte("set data 01"), setCalls[0].Data)
+	})
+
 	t.Run("lease-set-without-lease-get--do-nothing", func(t *testing.T) {
 		p := newPipelineTest(t)
 
@@ -482,6 +543,95 @@ func TestPipeline__LeaseGet_Multi(t *testing.T) {
 			pipelineExecuteAction(serverID2),
 			leaseGetFuncAction("KEY01"),
 			leaseGetFuncAction("KEY02"),
+		}, p.actions)
+	})
+}
+
+func TestPipeline__Delete(t *testing.T) {
+	t.Run("normal-single-server", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		p.stubSelectForDelete(serverID1)
+		p.stubPipeDelete(p.pipe1, nil)
+
+		fn := p.pipe.Delete("KEY01", memproxy.DeleteOptions{})
+		resp, err := fn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.DeleteResponse{}, resp)
+
+		selectCalls := p.selector.SelectForDeleteCalls()
+		assert.Equal(t, 1, len(selectCalls))
+		assert.Equal(t, "KEY01", selectCalls[0].Key)
+
+		assert.Equal(t, 1, len(p.pipe1.DeleteCalls()))
+		assert.Equal(t, "KEY01", p.pipe1.DeleteCalls()[0].Key)
+
+		assert.Equal(t, []string{
+			deleteAction("KEY01"),
+			deleteFuncAction("KEY01"),
+		}, p.actions)
+	})
+
+	t.Run("normal-two-servers", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		p.stubSelectForDelete(serverID1, serverID2)
+		p.stubPipeDelete(p.pipe1, nil)
+		p.stubPipeDelete(p.pipe2, nil)
+
+		fn := p.pipe.Delete("KEY01", memproxy.DeleteOptions{})
+		resp, err := fn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.DeleteResponse{}, resp)
+
+		selectCalls := p.selector.SelectForDeleteCalls()
+		assert.Equal(t, 1, len(selectCalls))
+		assert.Equal(t, "KEY01", selectCalls[0].Key)
+
+		assert.Equal(t, 1, len(p.pipe1.DeleteCalls()))
+		assert.Equal(t, "KEY01", p.pipe1.DeleteCalls()[0].Key)
+
+		assert.Equal(t, 1, len(p.pipe2.DeleteCalls()))
+		assert.Equal(t, "KEY01", p.pipe2.DeleteCalls()[0].Key)
+
+		assert.Equal(t, []string{
+			deleteAction("KEY01"),
+			deleteAction("KEY01"),
+			deleteFuncAction("KEY01"),
+			deleteFuncAction("KEY01"),
+		}, p.actions)
+	})
+
+	t.Run("normal-two-servers--first-returns-error", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		p.stubSelectForDelete(serverID1, serverID2)
+		p.stubPipeDelete(p.pipe1, errors.New("some error"))
+		p.stubPipeDelete(p.pipe2, nil)
+
+		fn := p.pipe.Delete("KEY01", memproxy.DeleteOptions{})
+		resp, err := fn()
+
+		assert.Equal(t, errors.New("some error"), err)
+		assert.Equal(t, memproxy.DeleteResponse{}, resp)
+
+		selectCalls := p.selector.SelectForDeleteCalls()
+		assert.Equal(t, 1, len(selectCalls))
+		assert.Equal(t, "KEY01", selectCalls[0].Key)
+
+		assert.Equal(t, 1, len(p.pipe1.DeleteCalls()))
+		assert.Equal(t, "KEY01", p.pipe1.DeleteCalls()[0].Key)
+
+		assert.Equal(t, 1, len(p.pipe2.DeleteCalls()))
+		assert.Equal(t, "KEY01", p.pipe2.DeleteCalls()[0].Key)
+
+		assert.Equal(t, []string{
+			deleteAction("KEY01"),
+			deleteAction("KEY01"),
+			deleteFuncAction("KEY01"),
+			deleteFuncAction("KEY01"),
 		}, p.actions)
 	})
 }

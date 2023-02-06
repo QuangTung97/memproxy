@@ -109,6 +109,16 @@ func (p *Pipeline) doExecuteForAllServers() {
 	p.needExecServerSet = nil
 }
 
+func (p *Pipeline) setKeyForLeaseSet(
+	key string,
+	resp memproxy.LeaseGetResponse,
+	serverID ServerID,
+) {
+	if resp.Status == memproxy.LeaseGetStatusLeaseGranted || resp.Status == memproxy.LeaseGetStatusLeaseRejected {
+		p.leaseSetServers[key] = serverID
+	}
+}
+
 // LeaseGet ...
 func (p *Pipeline) LeaseGet(
 	key string, options memproxy.LeaseGetOptions,
@@ -139,17 +149,14 @@ func (p *Pipeline) LeaseGet(
 			p.sess.AddNextCall(func() {
 				p.doExecuteForAllServers()
 				resp, err = fn()
-
-				if err == nil && resp.Status == memproxy.LeaseGetStatusLeaseGranted {
-					p.leaseSetServers[key] = serverID
+				if err == nil {
+					p.setKeyForLeaseSet(key, resp, serverID)
 				}
 			})
 			return
 		}
 
-		if resp.Status == memproxy.LeaseGetStatusLeaseGranted {
-			p.leaseSetServers[key] = serverID
-		}
+		p.setKeyForLeaseSet(key, resp, serverID)
 	})
 
 	return func() (memproxy.LeaseGetResponse, error) {
@@ -175,12 +182,24 @@ func (p *Pipeline) LeaseSet(
 }
 
 // Delete ...
-func (*Pipeline) Delete(
-	string, memproxy.DeleteOptions,
+func (p *Pipeline) Delete(
+	key string, options memproxy.DeleteOptions,
 ) func() (memproxy.DeleteResponse, error) {
+	serverIDs := p.selector.SelectForDelete(key)
+	fnList := make([]func() (memproxy.DeleteResponse, error), 0, len(serverIDs))
+	for _, id := range serverIDs {
+		fnList = append(fnList, p.getRoutePipeline(id).Delete(key, options))
+	}
+
 	return func() (memproxy.DeleteResponse, error) {
-		// TODO
-		return memproxy.DeleteResponse{}, nil
+		var lastErr error
+		for _, fn := range fnList {
+			_, err := fn()
+			if err != nil {
+				lastErr = err
+			}
+		}
+		return memproxy.DeleteResponse{}, lastErr
 	}
 }
 

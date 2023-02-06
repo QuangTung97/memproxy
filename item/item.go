@@ -38,10 +38,6 @@ func DefaultSleepDurations() []time.Duration {
 		4 * time.Millisecond,
 		10 * time.Millisecond,
 		20 * time.Millisecond,
-		40 * time.Millisecond,
-		80 * time.Millisecond,
-		200 * time.Millisecond,
-		500 * time.Millisecond,
 	}
 }
 
@@ -62,6 +58,8 @@ func WithSleepDurations(durations ...time.Duration) Option {
 		opts.sleepDurations = durations
 	}
 }
+
+// TODO Delete when Filler returns a Special Error
 
 // ErrExceededRejectRetryLimit TODO Remove this error
 var ErrExceededRejectRetryLimit = errors.New("item: exceeded lease rejected retry limit")
