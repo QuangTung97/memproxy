@@ -25,7 +25,8 @@ type Unmarshaler[T any] func(data []byte) (T, error)
 type Filler[T any, K any] func(ctx context.Context, key K) func() (T, error)
 
 type itemOptions struct {
-	sleepDurations []time.Duration
+	sleepDurations    []time.Duration
+	errorOnRetryLimit bool
 }
 
 // Option ...
@@ -43,7 +44,8 @@ func DefaultSleepDurations() []time.Duration {
 
 func computeOptions(options []Option) *itemOptions {
 	opts := &itemOptions{
-		sleepDurations: DefaultSleepDurations(),
+		sleepDurations:    DefaultSleepDurations(),
+		errorOnRetryLimit: false,
 	}
 
 	for _, fn := range options {
@@ -59,9 +61,17 @@ func WithSleepDurations(durations ...time.Duration) Option {
 	}
 }
 
-// TODO Delete when Filler returns a Special Error
+// WithEnableErrorOnExceedRetryLimit ...
+func WithEnableErrorOnExceedRetryLimit(enable bool) Option {
+	return func(opts *itemOptions) {
+		opts.errorOnRetryLimit = enable
+	}
+}
 
-// ErrExceededRejectRetryLimit TODO Remove this error
+// ErrNotFound ONLY be returned from the filler function, to do delete of lease get key in the memcached server
+var ErrNotFound = errors.New("item: not found")
+
+// ErrExceededRejectRetryLimit returned when number of rejected lease gets exceed number of sleep durations
 var ErrExceededRejectRetryLimit = errors.New("item: exceeded lease rejected retry limit")
 
 // ErrInvalidLeaseGetStatus ...
@@ -112,6 +122,13 @@ func (i *Item[T, K]) handleLeaseGranted(
 	fillFn := i.filler(ctx, key)
 	i.sess.AddNextCall(func() {
 		fillResp, err := fillFn()
+
+		if err == ErrNotFound {
+			setResponse(fillResp)
+			i.pipeline.Delete(keyStr, memproxy.DeleteOptions{})
+			return
+		}
+
 		if err != nil {
 			setError(err)
 			return
@@ -129,6 +146,8 @@ func (i *Item[T, K]) handleLeaseGranted(
 }
 
 // Get ...
+//
+//revive:disable-next-line:cognitive-complexity
 func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 	keyStr := key.String()
 
@@ -181,7 +200,8 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 		}
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseGranted {
-			i.handleLeaseGranted(ctx, key,
+			i.handleLeaseGranted(
+				ctx, key,
 				setError, setResponse,
 				keyStr, leaseGetResp.CAS,
 			)
@@ -190,7 +210,15 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseRejected {
 			if retryCount >= len(i.options.sleepDurations) {
-				setError(ErrExceededRejectRetryLimit)
+				if i.options.errorOnRetryLimit {
+					setError(ErrExceededRejectRetryLimit)
+				} else {
+					i.handleLeaseGranted(
+						ctx, key,
+						setError, setResponse,
+						keyStr, leaseGetResp.CAS,
+					)
+				}
 				return
 			}
 

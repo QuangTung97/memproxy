@@ -68,7 +68,7 @@ func (m *Memcache) Pipeline(
 	}
 }
 
-// Close TODO testing
+// Close ...
 func (m *Memcache) Close() error {
 	var lastErr error
 	for _, client := range m.clients {

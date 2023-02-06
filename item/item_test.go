@@ -90,11 +90,14 @@ func fillFuncAction(key string) string {
 	return "fill-func: " + key
 }
 
-func newItemTest() *itemTest {
-	return newItemTestWithSleepDurations(DefaultSleepDurations())
+func newItemTest(options ...Option) *itemTest {
+	return newItemTestWithSleepDurations(DefaultSleepDurations(), options...)
 }
 
-func newItemTestWithSleepDurations(sleepDurations []time.Duration) *itemTest {
+func newItemTestWithSleepDurations(
+	sleepDurations []time.Duration,
+	options ...Option,
+) *itemTest {
 	sess := &mocks.SessionMock{}
 	pipe := &mocks.PipelineMock{}
 
@@ -138,7 +141,8 @@ func newItemTestWithSleepDurations(sleepDurations []time.Duration) *itemTest {
 		return i.fillFunc(ctx, key)
 	}
 
-	i.item = New(pipe, unmarshalUser, userFiller, WithSleepDurations(sleepDurations...))
+	options = append(options, WithSleepDurations(sleepDurations...))
+	i.item = New(pipe, unmarshalUser, userFiller, options...)
 
 	// stubbing
 	i.stubLeaseSet()
@@ -314,6 +318,59 @@ func TestItem(t *testing.T) {
 		assert.Equal(t, uint64(cas), setCalls[0].Cas)
 		assert.Equal(t, mustMarshalUser(user), setCalls[0].Data)
 	})
+
+	t.Run("lease-get-lease-granted--fill-with-error-not-found", func(t *testing.T) {
+		i := newItemTest()
+
+		const cas = 8231
+
+		i.stubLeaseGet(memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    cas,
+		}, nil)
+
+		// stub delete
+		i.pipe.DeleteFunc = func(key string, options memproxy.DeleteOptions) func() (memproxy.DeleteResponse, error) {
+			return func() (memproxy.DeleteResponse, error) {
+				return memproxy.DeleteResponse{}, nil
+			}
+		}
+
+		user := userValue{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+			Age:    88,
+		}
+
+		i.fillFunc = func(ctx context.Context, key userKey) func() (userValue, error) {
+			return func() (userValue, error) {
+				return userValue{Age: 11}, ErrNotFound
+			}
+		}
+
+		fn := i.item.Get(newContext(), userKey{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+		})
+
+		resp, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, userValue{Age: 11}, resp)
+
+		// Check Calls
+		assert.Equal(t, 1, i.fillCalls)
+		assert.Equal(t, []userKey{
+			user.GetKey(),
+		}, i.fillKeys)
+
+		// Check Set
+		setCalls := i.pipe.LeaseSetCalls()
+		assert.Equal(t, 0, len(setCalls))
+
+		// Check Delete
+		assert.Equal(t, 1, len(i.pipe.DeleteCalls()))
+		assert.Equal(t, "TENANT01:USER01", i.pipe.DeleteCalls()[0].Key)
+	})
 }
 
 func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
@@ -411,12 +468,12 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		}, i.delayCalls)
 	})
 
-	t.Run("lease-rejected-exceed-max-number-of-times", func(t *testing.T) {
+	t.Run("lease-rejected-exceed-max-number-of-times--returns-error", func(t *testing.T) {
 		i := newItemTestWithSleepDurations([]time.Duration{
 			3 * time.Millisecond,
 			7 * time.Millisecond,
 			13 * time.Millisecond,
-		})
+		}, WithEnableErrorOnExceedRetryLimit(true))
 
 		i.stubLeaseGetMulti(
 			memproxy.LeaseGetResponse{
@@ -478,6 +535,74 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
 
 		assert.Equal(t, 0, len(i.delayCalls))
+	})
+
+	t.Run("lease-rejected-exceed-max-number-of-times--still-do-fill", func(t *testing.T) {
+		i := newItemTestWithSleepDurations([]time.Duration{
+			3 * time.Millisecond,
+			7 * time.Millisecond,
+			13 * time.Millisecond,
+		})
+
+		const cas = 78112
+
+		i.stubLeaseGetMulti(
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+				CAS:    cas,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+				CAS:    cas,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+				CAS:    cas,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+				CAS:    cas,
+			},
+		)
+
+		user := userValue{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+			Age:    88,
+		}
+
+		i.fillFunc = func(ctx context.Context, key userKey) func() (userValue, error) {
+			return func() (userValue, error) {
+				return user, nil
+			}
+		}
+
+		fn := i.item.Get(newContext(), userKey{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+		})
+
+		result, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user, result)
+
+		calls := i.pipe.LeaseGetCalls()
+
+		assert.Equal(t, 4, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+		assert.Equal(t, "TENANT01:USER01", calls[1].Key)
+		assert.Equal(t, "TENANT01:USER01", calls[3].Key)
+
+		assert.Equal(t, []time.Duration{
+			3 * time.Millisecond,
+			7 * time.Millisecond,
+			13 * time.Millisecond,
+		}, i.delayCalls)
+
+		assert.Equal(t, 1, len(i.pipe.LeaseSetCalls()))
+		assert.Equal(t, "TENANT01:USER01", i.pipe.LeaseSetCalls()[0].Key)
+		assert.Equal(t, uint64(cas), i.pipe.LeaseSetCalls()[0].Cas)
+		assert.Equal(t, mustMarshalUser(user), i.pipe.LeaseSetCalls()[0].Data)
 	})
 }
 
