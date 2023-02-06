@@ -96,7 +96,10 @@ func New[T item.Value, R item.Key, K Key](
 	getKey func(v T) K,
 	unmarshaler item.Unmarshaler[T],
 	filler Filler[R],
+	options ...Option,
 ) *Hash[T, R, K] {
+	conf := computeConfig(options...)
+
 	bucketUnmarshaler := BucketUnmarshalerFromItem(unmarshaler)
 
 	var bucketFiller item.Filler[Bucket[T], BucketKey[R]] = func(
@@ -114,6 +117,7 @@ func New[T item.Value, R item.Key, K Key](
 
 	bucketItem := item.New[Bucket[T], BucketKey[R]](
 		pipeline, bucketUnmarshaler, bucketFiller,
+		conf.itemOptions...,
 	)
 
 	return &Hash[T, R, K]{

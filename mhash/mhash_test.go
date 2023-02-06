@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/item"
 	"github.com/QuangTung97/memproxy/mocks"
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 type customerUsage struct {
@@ -80,7 +82,7 @@ func newFakeSession() memproxy.Session {
 	return memproxy.NewSessionProvider().New()
 }
 
-func newHashTest() *hashTest {
+func newHashTest(options ...Option) *hashTest {
 	sess := newFakeSession()
 	pipe := &mocks.PipelineMock{}
 	pipe.LowerSessionFunc = func() memproxy.Session {
@@ -106,6 +108,7 @@ func newHashTest() *hashTest {
 
 	h.hash = New[customerUsage, customerUsageRootKey, customerUsageKey](
 		pipe, customerUsage.getKey, unmarshalCustomerUsage, filler,
+		options...,
 	)
 
 	return h
@@ -737,6 +740,81 @@ func TestHash(t *testing.T) {
 		assert.Equal(t, 1, len(h.fillerRootKeys))
 		assert.Equal(t, rootKey, h.fillerRootKeys[0])
 		assert.Equal(t, []uint64{0x1223 << (64 - 8*2)}, h.fillerHashList)
+	})
+
+	t.Run("cache-lease-rejected-all--error-on-reach-limit--returns-error", func(t *testing.T) {
+		h := newHashTest(WithItemOptions(
+			item.WithSleepDurations(10*time.Millisecond, 20*time.Millisecond),
+			item.WithEnableErrorOnExceedRetryLimit(true),
+		))
+
+		const keyHash = 0x1223ff << (64 - 8*3)
+		const cas = 120033
+
+		usage := customerUsage{
+			Tenant:     "TENANT01",
+			CampaignID: 41,
+			Phone:      "0987000111",
+			TermCode:   "TERM01",
+			Hash:       keyHash,
+
+			Usage: 88,
+			Age:   99,
+		}
+
+		h.stubLeaseGetMulti(
+			newLeaseResp(1, 0, 0x12),
+			newLeaseResp(2, 0x12, 0x23),
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+				CAS:    cas,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+				CAS:    cas,
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusLeaseRejected,
+				CAS:    cas,
+			},
+		)
+
+		data := mustMarshalBucket(0, 0, Bucket[customerUsage]{
+			Items: []customerUsage{
+				usage,
+			},
+		})
+		h.stubFill(data, nil)
+
+		h.stubLeaseSet()
+
+		rootKey := customerUsageRootKey{
+			Tenant:     "TENANT01",
+			CampaignID: 41,
+		}
+		usageKey := customerUsageKey{
+			Phone:    "0987000111",
+			TermCode: "TERM01",
+			hash:     keyHash,
+		}
+
+		fn := h.hash.Get(newContext(),
+			rootKey,
+			usageKey,
+		)
+
+		resp, err := fn()
+
+		assert.Equal(t, item.ErrExceededRejectRetryLimit, err)
+		assert.Equal(t, Null[customerUsage]{}, resp)
+
+		getCalls := h.pipe.LeaseGetCalls()
+		assert.Equal(t, 5, len(getCalls))
+		assert.Equal(t, "TENANT01:41:", getCalls[0].Key)
+		assert.Equal(t, "TENANT01:41:12", getCalls[1].Key)
+		assert.Equal(t, "TENANT01:41:1223", getCalls[2].Key)
+		assert.Equal(t, "TENANT01:41:1223", getCalls[3].Key)
+		assert.Equal(t, "TENANT01:41:1223", getCalls[4].Key)
 	})
 }
 
