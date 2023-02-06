@@ -2,6 +2,7 @@ package mhash
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -67,4 +68,102 @@ func TestBucketMarshaler_Unmarshal_Empty(t *testing.T) {
 
 	assert.Equal(t, nil, err)
 	assert.Equal(t, Bucket[userTest]{}, newBucket)
+}
+
+func TestBucketUnmarshaler(t *testing.T) {
+	unmarshaler := func(data []byte) (userTest, error) {
+		var u userTest
+		err := json.Unmarshal(data, &u)
+		return u, err
+	}
+	bucketUnmarshaler := BucketUnmarshalerFromItem[userTest](unmarshaler)
+
+	t.Run("version-too-big", func(t *testing.T) {
+		_, err := bucketUnmarshaler([]byte{binaryVersion + 1})
+		assert.Equal(t, errors.New("mhash unmarshaler: version too big"), err)
+	})
+
+	t.Run("missing-next-level-byte", func(t *testing.T) {
+		_, err := bucketUnmarshaler([]byte{binaryVersion})
+		assert.Equal(t, errors.New("mhash unmarshaler: missing next level byte"), err)
+	})
+
+	t.Run("missing-next-level-byte", func(t *testing.T) {
+		_, err := bucketUnmarshaler([]byte{binaryVersion})
+		assert.Equal(t, errors.New("mhash unmarshaler: missing next level byte"), err)
+	})
+
+	t.Run("missing-next-level-prefix", func(t *testing.T) {
+		_, err := bucketUnmarshaler([]byte{binaryVersion, 2, 1, 2, 3, 4, 5, 6, 7})
+		assert.Equal(t, errors.New("mhash unmarshaler: missing next level prefix"), err)
+	})
+
+	t.Run("invalid-item-len", func(t *testing.T) {
+		_, err := bucketUnmarshaler([]byte{
+			binaryVersion, 2,
+			1, 2, 3, 4, 5, 6, 7, 8,
+			0xfa,
+		})
+		assert.Equal(t, errors.New("mhash unmarshaler: invalid item len"), err)
+	})
+
+	t.Run("invalid-data-len", func(t *testing.T) {
+		_, err := bucketUnmarshaler([]byte{
+			binaryVersion, 2,
+			1, 2, 3, 4, 5, 6, 7, 8,
+			0x01,
+			0xf1,
+		})
+		assert.Equal(t, errors.New("mhash unmarshaler: invalid data len"), err)
+	})
+
+	t.Run("invalid-data-bytes-length", func(t *testing.T) {
+		_, err := bucketUnmarshaler([]byte{
+			binaryVersion, 2,
+			1, 2, 3, 4, 5, 6, 7, 8,
+			0x01,
+			0x02, 0x88,
+		})
+		assert.Equal(t, errors.New("mhash unmarshaler: invalid data bytes length"), err)
+	})
+
+	t.Run("missing-bitset-data", func(t *testing.T) {
+		_, err := bucketUnmarshaler([]byte{
+			binaryVersion, 2,
+			1, 2, 3, 4, 5, 6, 7, 8,
+			0x01,
+			0x02, '{', '}',
+
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+			11, 22, 33,
+		})
+		assert.Equal(t, errors.New("mhash unmarshaler: missing bitset data"), err)
+	})
+
+	t.Run("success", func(t *testing.T) {
+		_, err := bucketUnmarshaler([]byte{
+			binaryVersion, 2,
+			1, 2, 3, 4, 5, 6, 7, 8,
+			0x01,
+			0x02, '{', '}',
+
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+			11, 22, 33, 44,
+		})
+		assert.Equal(t, nil, err)
+	})
 }
