@@ -204,20 +204,21 @@ func (p *Pipeline) LowerSession() memproxy.Session {
 	return p.sess.GetLower()
 }
 
+// NewSimpleStats ...
+func NewSimpleStats(servers []SimpleServerConfig, options ...SimpleStatsOption) *SimpleServerStats {
+	return NewSimpleServerStats[SimpleServerConfig](servers, NewSimpleStatsClient, options...)
+}
+
 // NewSimpleReplicatedMemcache ...
 func NewSimpleReplicatedMemcache(
 	servers []SimpleServerConfig,
 	numConnsPerServer int,
+	stats ServerStats,
 	options ...ReplicatedRouteOption,
 ) (*Memcache, func(), error) {
 	serverIDs := make([]ServerID, 0, len(servers))
 	for _, s := range servers {
 		serverIDs = append(serverIDs, s.GetID())
-	}
-
-	stats, err := NewSimpleServerStats[SimpleServerConfig](servers, NewSimpleStatsClient)
-	if err != nil {
-		return nil, nil, err
 	}
 
 	conf := Config[SimpleServerConfig]{
@@ -236,12 +237,8 @@ func NewSimpleReplicatedMemcache(
 		},
 	)
 	if err != nil {
-		stats.Shutdown()
 		return nil, nil, err
 	}
 
-	return mc, func() {
-		_ = mc.Close()
-		stats.Shutdown()
-	}, nil
+	return mc, func() { _ = mc.Close() }, nil
 }

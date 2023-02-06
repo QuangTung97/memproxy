@@ -33,7 +33,8 @@ func newMemcacheWithProxy(t *testing.T) (memproxy.Memcache, memproxy.SessionProv
 		Port: 11211,
 	}
 
-	mc, closeFunc, err := NewSimpleReplicatedMemcache([]SimpleServerConfig{server1}, 1)
+	servers := []SimpleServerConfig{server1}
+	mc, closeFunc, err := NewSimpleReplicatedMemcache(servers, 1, NewSimpleStats(servers))
 	if err != nil {
 		panic(err)
 	}

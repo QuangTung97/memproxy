@@ -3,6 +3,7 @@ package proxy
 import (
 	"fmt"
 	mcstats "github.com/QuangTung97/go-memcache/memcache/stats"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,8 +16,55 @@ type serverStatus struct {
 	failed atomic.Bool
 }
 
+type simpleStatsConfig struct {
+	errorLogger   func(err error)
+	memLogger     func(server ServerID, mem uint64, err error)
+	checkDuration time.Duration
+}
+
+// SimpleStatsOption ...
+type SimpleStatsOption func(conf *simpleStatsConfig)
+
+// WithSimpleStatsErrorLogger ...
+func WithSimpleStatsErrorLogger(logger func(err error)) SimpleStatsOption {
+	return func(conf *simpleStatsConfig) {
+		conf.errorLogger = logger
+	}
+}
+
+// WithSimpleStatsMemLogger ...
+func WithSimpleStatsMemLogger(memLogger func(server ServerID, mem uint64, err error)) SimpleStatsOption {
+	return func(conf *simpleStatsConfig) {
+		conf.memLogger = memLogger
+	}
+}
+
+// WithSimpleStatsCheckDuration ...
+func WithSimpleStatsCheckDuration(d time.Duration) SimpleStatsOption {
+	return func(conf *simpleStatsConfig) {
+		conf.checkDuration = d
+	}
+}
+
+func computeSimpleStatsConfig(options ...SimpleStatsOption) *simpleStatsConfig {
+	conf := &simpleStatsConfig{
+		errorLogger: func(err error) {
+			log.Println("[ERROR] SimpleServerStats:", err)
+		},
+		memLogger: func(server ServerID, mem uint64, err error) {
+		},
+		checkDuration: 30 * time.Second,
+	}
+	for _, option := range options {
+		option(conf)
+	}
+	return conf
+}
+
 // SimpleServerStats ...
 type SimpleServerStats struct {
+	conf *simpleStatsConfig
+
 	wg sync.WaitGroup
 
 	//revive:disable-next-line:nested-structs
@@ -42,7 +90,10 @@ const signalChanSize = 128
 func NewSimpleServerStats[S ServerConfig](
 	servers []S,
 	factory func(conf S) StatsClient,
-) (*SimpleServerStats, error) {
+	options ...SimpleStatsOption,
+) *SimpleServerStats {
+	conf := computeSimpleStatsConfig(options...)
+
 	clients := map[ServerID]StatsClient{}
 	clientSignals := map[ServerID]chan struct{}{}
 	statuses := map[ServerID]*serverStatus{}
@@ -59,6 +110,8 @@ func NewSimpleServerStats[S ServerConfig](
 	}
 
 	s := &SimpleServerStats{
+		conf: conf,
+
 		clientSignals: clientSignals,
 		statuses:      statuses,
 		newClientFunc: func(server ServerID) StatsClient {
@@ -86,7 +139,7 @@ func NewSimpleServerStats[S ServerConfig](
 		}()
 	}
 
-	return s, nil
+	return s
 }
 
 func (s *SimpleServerStats) clientGetMemory(server ServerID, client StatsClient) StatsClient {
@@ -98,9 +151,9 @@ func (s *SimpleServerStats) clientGetMemory(server ServerID, client StatsClient)
 	}
 
 	mem, err := client.GetMemUsage()
-	fmt.Println("MEM:", server, mem, err) // TODO remove
+	s.conf.memLogger(server, mem, err)
 	if err != nil {
-		// TODO log error
+		s.conf.errorLogger(err)
 		status.failed.Store(true)
 		return client
 	}
@@ -130,7 +183,7 @@ func (s *SimpleServerStats) handleClient(server ServerID, client StatsClient, si
 
 			client = s.clientGetMemory(server, client)
 
-		case <-time.After(30 * time.Second): // TODO Config
+		case <-time.After(s.conf.checkDuration):
 			client = s.clientGetMemory(server, client)
 		}
 	}

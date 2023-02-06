@@ -1,3 +1,4 @@
 /.idea
 /coverage.out
 /benchmark_new.txt
+/**/*profile.out

@@ -1,4 +1,4 @@
-.PHONY: lint install-tools test test-race coverage benchmark compare new_to_old membench
+.PHONY: lint install-tools test test-race coverage benchmark compare new_to_old membench profile
 
 lint:
 	go fmt ./...
@@ -20,7 +20,7 @@ coverage:
 	go tool cover -func coverage.out | grep ^total
 
 benchmark:
-	go test -run="^Benchmark" -bench=. -count=20 ./... > benchmark_new.txt
+	go test -run="^Benchmark" -bench=. -count=10 ./... > benchmark_new.txt
 
 compare:
 	benchstat benchmark_old.txt benchmark_new.txt
@@ -30,3 +30,6 @@ new_to_old:
 
 membench:
 	go test -run="^Benchmark" -bench=. -benchmem ./...
+
+profile:
+	go tool pprof -http=:8080 ./item/bench_profile.out

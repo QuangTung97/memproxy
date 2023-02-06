@@ -7,7 +7,9 @@ import (
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/proxy"
 	"github.com/stretchr/testify/assert"
+	"os"
 	"runtime"
+	"runtime/pprof"
 	"strconv"
 	"testing"
 )
@@ -92,7 +94,8 @@ func newMemcacheWithProxy(b *testing.B) (memproxy.Memcache, memproxy.SessionProv
 		Port: 11211,
 	}
 
-	mc, closeFunc, err := proxy.NewSimpleReplicatedMemcache([]proxy.SimpleServerConfig{server1}, 1)
+	servers := []proxy.SimpleServerConfig{server1}
+	mc, closeFunc, err := proxy.NewSimpleReplicatedMemcache(servers, 1, proxy.NewSimpleStats(servers))
 	if err != nil {
 		panic(err)
 	}
@@ -144,6 +147,28 @@ func BenchmarkItemGetSingle(b *testing.B) {
 	}
 }
 
+func writeMemProfile() {
+	if os.Getenv("ENABLE_BENCH_PROFILE") == "" {
+		return
+	}
+
+	file, err := os.Create("./bench_profile.out")
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		err := file.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	err = pprof.WriteHeapProfile(file)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func benchmarkWithBatch(
 	b *testing.B,
 	newFunc func(b *testing.B) (memproxy.Memcache, memproxy.SessionProvider),
@@ -185,6 +210,9 @@ func benchmarkWithBatch(
 		}
 		pipe.Finish()
 	}
+
+	b.StopTimer()
+	writeMemProfile()
 }
 
 func BenchmarkItemGetByBatch1000(b *testing.B) {

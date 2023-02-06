@@ -38,7 +38,7 @@ func (u UserKey) String() string {
 }
 
 func main() {
-	mc, closeFun, err := proxy.NewSimpleReplicatedMemcache([]proxy.SimpleServerConfig{
+	servers := []proxy.SimpleServerConfig{
 		{
 			ID:   1,
 			Host: "localhost",
@@ -49,7 +49,20 @@ func main() {
 			Host: "localhost",
 			Port: 11212,
 		},
-	}, 3, proxy.WithMinPercentage(5))
+	}
+
+	stats := proxy.NewSimpleStats(servers,
+		proxy.WithSimpleStatsMemLogger(func(server proxy.ServerID, mem uint64, err error) {
+			fmt.Println("SERVER MEM:", server, mem, err)
+		}),
+		proxy.WithSimpleStatsCheckDuration(10*time.Second),
+	)
+	defer stats.Shutdown()
+
+	mc, closeFun, err := proxy.NewSimpleReplicatedMemcache(
+		servers, 3, stats,
+		proxy.WithMinPercentage(10),
+	)
 	if err != nil {
 		panic(err)
 	}
