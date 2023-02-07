@@ -1,70 +1,74 @@
 PASS
 ok  	github.com/QuangTung97/memproxy	0.003s
+?   	github.com/QuangTung97/memproxy/examples/failover	[no test files]
 goos: linux
 goarch: amd64
 pkg: github.com/QuangTung97/memproxy/item
 cpu: Intel(R) Core(TM) i7-8565U CPU @ 1.80GHz
-BenchmarkItemGetSingle-8        	   21886	     56410 ns/op
-BenchmarkItemGetSingle-8        	   20893	     54763 ns/op
-BenchmarkItemGetSingle-8        	   21289	     55665 ns/op
-BenchmarkItemGetSingle-8        	   20836	     56727 ns/op
-BenchmarkItemGetSingle-8        	   20310	     57444 ns/op
-BenchmarkItemGetSingle-8        	   21267	     58027 ns/op
-BenchmarkItemGetSingle-8        	   20707	     57549 ns/op
-BenchmarkItemGetSingle-8        	   20836	     57307 ns/op
-BenchmarkItemGetSingle-8        	   19600	     57141 ns/op
-BenchmarkItemGetSingle-8        	   20664	     57548 ns/op
-BenchmarkItemGetSingle-8        	   19636	     56657 ns/op
-BenchmarkItemGetSingle-8        	   20439	     56876 ns/op
-BenchmarkItemGetSingle-8        	   19802	     58410 ns/op
-BenchmarkItemGetSingle-8        	   20530	     60030 ns/op
-BenchmarkItemGetSingle-8        	   20430	     57426 ns/op
-BenchmarkItemGetSingle-8        	   21229	     58401 ns/op
-BenchmarkItemGetSingle-8        	   21463	     57192 ns/op
-BenchmarkItemGetSingle-8        	   21072	     59445 ns/op
-BenchmarkItemGetSingle-8        	   20412	     58929 ns/op
-BenchmarkItemGetSingle-8        	   21016	     57698 ns/op
-BenchmarkItemGetByBatch1000-8   	     561	   2137337 ns/op
-BenchmarkItemGetByBatch1000-8   	     484	   2738752 ns/op
-BenchmarkItemGetByBatch1000-8   	     487	   2698032 ns/op
-BenchmarkItemGetByBatch1000-8   	     490	   2171977 ns/op
-BenchmarkItemGetByBatch1000-8   	     579	   1942563 ns/op
-BenchmarkItemGetByBatch1000-8   	     616	   2203546 ns/op
-BenchmarkItemGetByBatch1000-8   	     535	   2431588 ns/op
-BenchmarkItemGetByBatch1000-8   	     565	   2247870 ns/op
-BenchmarkItemGetByBatch1000-8   	     499	   2424240 ns/op
-BenchmarkItemGetByBatch1000-8   	     530	   2346155 ns/op
-BenchmarkItemGetByBatch1000-8   	     526	   2451242 ns/op
-BenchmarkItemGetByBatch1000-8   	     519	   2388125 ns/op
-BenchmarkItemGetByBatch1000-8   	     454	   2504135 ns/op
-BenchmarkItemGetByBatch1000-8   	     531	   2663476 ns/op
-BenchmarkItemGetByBatch1000-8   	     618	   2314182 ns/op
-BenchmarkItemGetByBatch1000-8   	     559	   2215107 ns/op
-BenchmarkItemGetByBatch1000-8   	     554	   2400630 ns/op
-BenchmarkItemGetByBatch1000-8   	     590	   2337013 ns/op
-BenchmarkItemGetByBatch1000-8   	     510	   2577143 ns/op
-BenchmarkItemGetByBatch1000-8   	     477	   2237329 ns/op
-BenchmarkItemGetByBatch100-8    	    3999	    310122 ns/op
-BenchmarkItemGetByBatch100-8    	    4064	    302663 ns/op
-BenchmarkItemGetByBatch100-8    	    4033	    308909 ns/op
-BenchmarkItemGetByBatch100-8    	    4015	    307440 ns/op
-BenchmarkItemGetByBatch100-8    	    3805	    304510 ns/op
-BenchmarkItemGetByBatch100-8    	    3954	    304046 ns/op
-BenchmarkItemGetByBatch100-8    	    4166	    308466 ns/op
-BenchmarkItemGetByBatch100-8    	    3928	    312090 ns/op
-BenchmarkItemGetByBatch100-8    	    3700	    306723 ns/op
-BenchmarkItemGetByBatch100-8    	    3852	    308155 ns/op
-BenchmarkItemGetByBatch100-8    	    4026	    300321 ns/op
-BenchmarkItemGetByBatch100-8    	    3828	    304017 ns/op
-BenchmarkItemGetByBatch100-8    	    3853	    303371 ns/op
-BenchmarkItemGetByBatch100-8    	    3933	    315273 ns/op
-BenchmarkItemGetByBatch100-8    	    3733	    308559 ns/op
-BenchmarkItemGetByBatch100-8    	    3986	    312202 ns/op
-BenchmarkItemGetByBatch100-8    	    3976	    305092 ns/op
-BenchmarkItemGetByBatch100-8    	    4050	    311662 ns/op
-BenchmarkItemGetByBatch100-8    	    3730	    300725 ns/op
-BenchmarkItemGetByBatch100-8    	    3970	    308128 ns/op
+BenchmarkItemGetSingle-8                 	   35326	     31967 ns/op
+BenchmarkItemGetSingle-8                 	   36493	     31969 ns/op
+BenchmarkItemGetSingle-8                 	   37573	     31455 ns/op
+BenchmarkItemGetSingle-8                 	   38120	     32097 ns/op
+BenchmarkItemGetSingle-8                 	   37936	     31581 ns/op
+BenchmarkItemGetSingle-8                 	   36225	     31765 ns/op
+BenchmarkItemGetSingle-8                 	   37867	     31955 ns/op
+BenchmarkItemGetSingle-8                 	   37804	     31910 ns/op
+BenchmarkItemGetSingle-8                 	   37418	     32489 ns/op
+BenchmarkItemGetSingle-8                 	   36849	     32434 ns/op
+BenchmarkItemGetByBatch1000-8            	     627	   2025879 ns/op
+BenchmarkItemGetByBatch1000-8            	     646	   1883982 ns/op
+BenchmarkItemGetByBatch1000-8            	     553	   1907529 ns/op
+BenchmarkItemGetByBatch1000-8            	     580	   1874875 ns/op
+BenchmarkItemGetByBatch1000-8            	     643	   1884685 ns/op
+BenchmarkItemGetByBatch1000-8            	     580	   1971675 ns/op
+BenchmarkItemGetByBatch1000-8            	     595	   1923921 ns/op
+BenchmarkItemGetByBatch1000-8            	     600	   1971834 ns/op
+BenchmarkItemGetByBatch1000-8            	     598	   1981879 ns/op
+BenchmarkItemGetByBatch1000-8            	     594	   1919507 ns/op
+BenchmarkItemGetByBatch100-8             	    4671	    236381 ns/op
+BenchmarkItemGetByBatch100-8             	    5317	    223988 ns/op
+BenchmarkItemGetByBatch100-8             	    5156	    218834 ns/op
+BenchmarkItemGetByBatch100-8             	    5510	    227907 ns/op
+BenchmarkItemGetByBatch100-8             	    5040	    233091 ns/op
+BenchmarkItemGetByBatch100-8             	    5270	    228814 ns/op
+BenchmarkItemGetByBatch100-8             	    4850	    229665 ns/op
+BenchmarkItemGetByBatch100-8             	    5224	    228918 ns/op
+BenchmarkItemGetByBatch100-8             	    5043	    220884 ns/op
+BenchmarkItemGetByBatch100-8             	    5169	    227841 ns/op
+BenchmarkItemWithProxyGetByBatch1000-8   	     520	   2402913 ns/op
+BenchmarkItemWithProxyGetByBatch1000-8   	     522	   2284023 ns/op
+BenchmarkItemWithProxyGetByBatch1000-8   	     522	   2309371 ns/op
+BenchmarkItemWithProxyGetByBatch1000-8   	     499	   2219671 ns/op
+BenchmarkItemWithProxyGetByBatch1000-8   	     567	   2213934 ns/op
+BenchmarkItemWithProxyGetByBatch1000-8   	     518	   2214115 ns/op
+BenchmarkItemWithProxyGetByBatch1000-8   	     537	   2203416 ns/op
+BenchmarkItemWithProxyGetByBatch1000-8   	     488	   2416846 ns/op
+BenchmarkItemWithProxyGetByBatch1000-8   	     496	   2373470 ns/op
+BenchmarkItemWithProxyGetByBatch1000-8   	     500	   2394059 ns/op
+BenchmarkItemWithProxyGetByBatch100-8    	    3754	    296214 ns/op
+BenchmarkItemWithProxyGetByBatch100-8    	    3699	    290346 ns/op
+BenchmarkItemWithProxyGetByBatch100-8    	    3710	    286893 ns/op
+BenchmarkItemWithProxyGetByBatch100-8    	    3602	    287893 ns/op
+BenchmarkItemWithProxyGetByBatch100-8    	    3602	    287129 ns/op
+BenchmarkItemWithProxyGetByBatch100-8    	    3604	    287107 ns/op
+BenchmarkItemWithProxyGetByBatch100-8    	    3795	    285217 ns/op
+BenchmarkItemWithProxyGetByBatch100-8    	    3628	    290297 ns/op
+BenchmarkItemWithProxyGetByBatch100-8    	    3745	    434007 ns/op
+BenchmarkItemWithProxyGetByBatch100-8    	    4048	    271639 ns/op
+BenchmarkHeapAlloc-8                     	15361941	        76.03 ns/op
+BenchmarkHeapAlloc-8                     	15850196	        88.00 ns/op
+BenchmarkHeapAlloc-8                     	13285598	        90.40 ns/op
+BenchmarkHeapAlloc-8                     	13346054	        84.37 ns/op
+BenchmarkHeapAlloc-8                     	14340439	        80.81 ns/op
+BenchmarkHeapAlloc-8                     	15103576	        80.10 ns/op
+BenchmarkHeapAlloc-8                     	14817286	        80.38 ns/op
+BenchmarkHeapAlloc-8                     	14440092	        73.32 ns/op
+BenchmarkHeapAlloc-8                     	16515190	        71.90 ns/op
+BenchmarkHeapAlloc-8                     	16187142	        71.89 ns/op
 PASS
-ok  	github.com/QuangTung97/memproxy/item	92.852s
+ok  	github.com/QuangTung97/memproxy/item	79.630s
 PASS
 ok  	github.com/QuangTung97/memproxy/mhash	0.003s
+?   	github.com/QuangTung97/memproxy/mocks	[no test files]
+PASS
+ok  	github.com/QuangTung97/memproxy/proxy	0.003s

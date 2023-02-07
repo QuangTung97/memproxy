@@ -604,6 +604,98 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		assert.Equal(t, uint64(cas), i.pipe.LeaseSetCalls()[0].Cas)
 		assert.Equal(t, mustMarshalUser(user), i.pipe.LeaseSetCalls()[0].Data)
 	})
+
+	t.Run("error-when-lease-get-return-error", func(t *testing.T) {
+		i := newItemTest()
+
+		i.stubLeaseGet(
+			memproxy.LeaseGetResponse{},
+			errors.New("lease get error"),
+		)
+
+		fn := i.item.Get(newContext(), userKey{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+		})
+
+		result, err := fn()
+		assert.Equal(t, errors.New("lease get error"), err)
+		assert.Equal(t, userValue{}, result)
+
+		calls := i.pipe.LeaseGetCalls()
+		assert.Equal(t, 1, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+	})
+
+	t.Run("continuing-get-from-db---when-lease-get-return-error", func(t *testing.T) {
+		i := newItemTest(WithEnableFillingOnCacheError(true))
+
+		i.stubLeaseGet(
+			memproxy.LeaseGetResponse{
+				CAS: 9988,
+			},
+			errors.New("lease get error"),
+		)
+
+		user := userValue{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+			Age:    88,
+		}
+
+		i.fillFunc = func(ctx context.Context, key userKey) func() (userValue, error) {
+			return func() (userValue, error) {
+				return user, nil
+			}
+		}
+
+		fn := i.item.Get(newContext(), userKey{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+		})
+
+		result, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user, result)
+
+		calls := i.pipe.LeaseGetCalls()
+		assert.Equal(t, 1, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+
+		assert.Equal(t, 0, len(i.pipe.LeaseSetCalls()))
+	})
+
+	t.Run("error-when-fill-error---after-lease-get-return-error", func(t *testing.T) {
+		i := newItemTest(WithEnableFillingOnCacheError(true))
+
+		i.stubLeaseGet(
+			memproxy.LeaseGetResponse{
+				CAS: 9988,
+			},
+			errors.New("lease get error"),
+		)
+
+		i.fillFunc = func(ctx context.Context, key userKey) func() (userValue, error) {
+			return func() (userValue, error) {
+				return userValue{}, errors.New("fill error")
+			}
+		}
+
+		fn := i.item.Get(newContext(), userKey{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+		})
+
+		result, err := fn()
+		assert.Equal(t, errors.New("fill error"), err)
+		assert.Equal(t, userValue{}, result)
+
+		calls := i.pipe.LeaseGetCalls()
+		assert.Equal(t, 1, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+
+		assert.Equal(t, 0, len(i.pipe.LeaseSetCalls()))
+	})
 }
 
 func TestItem__Multi(t *testing.T) {

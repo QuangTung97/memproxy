@@ -25,8 +25,9 @@ type Unmarshaler[T any] func(data []byte) (T, error)
 type Filler[T any, K any] func(ctx context.Context, key K) func() (T, error)
 
 type itemOptions struct {
-	sleepDurations    []time.Duration
-	errorOnRetryLimit bool
+	sleepDurations      []time.Duration
+	errorOnRetryLimit   bool
+	fillingOnCacheError bool
 }
 
 // Option ...
@@ -65,6 +66,13 @@ func WithSleepDurations(durations ...time.Duration) Option {
 func WithEnableErrorOnExceedRetryLimit(enable bool) Option {
 	return func(opts *itemOptions) {
 		opts.errorOnRetryLimit = enable
+	}
+}
+
+// WithEnableFillingOnCacheError continue to read from DB when get from memcached returns error
+func WithEnableFillingOnCacheError(enable bool) Option {
+	return func(opts *itemOptions) {
+		opts.fillingOnCacheError = enable
 	}
 }
 
@@ -141,7 +149,9 @@ func (i *Item[T, K]) handleLeaseGranted(
 		}
 		setResponse(fillResp)
 
-		i.pipeline.LeaseSet(keyStr, data, cas, memproxy.LeaseSetOptions{})
+		if cas > 0 {
+			i.pipeline.LeaseSet(keyStr, data, cas, memproxy.LeaseSetOptions{})
+		}
 	})
 }
 
@@ -170,7 +180,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 
 	var nextFn func()
 
-	setError := func(err error) {
+	setResponseError := func(err error) {
 		i.getKeys[key] = getResultType[T]{
 			err: err,
 		}
@@ -184,15 +194,33 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 
 	nextFn = func() {
 		leaseGetResp, err := leaseGetFn()
+
+		doFillFunc := func() {
+			i.handleLeaseGranted(
+				ctx, key,
+				setResponseError, setResponse,
+				keyStr, leaseGetResp.CAS,
+			)
+		}
+
+		handleCacheError := func(err error) {
+			if i.options.fillingOnCacheError {
+				leaseGetResp = memproxy.LeaseGetResponse{}
+				doFillFunc()
+			} else {
+				setResponseError(err)
+			}
+		}
+
 		if err != nil {
-			setError(err)
+			handleCacheError(err)
 			return
 		}
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusFound {
 			resp, err := i.unmarshaler(leaseGetResp.Data)
 			if err != nil {
-				setError(err)
+				setResponseError(err)
 				return
 			}
 			setResponse(resp)
@@ -200,38 +228,31 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 		}
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseGranted {
-			i.handleLeaseGranted(
-				ctx, key,
-				setError, setResponse,
-				keyStr, leaseGetResp.CAS,
-			)
+			doFillFunc()
 			return
 		}
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseRejected {
-			if retryCount >= len(i.options.sleepDurations) {
-				if i.options.errorOnRetryLimit {
-					setError(ErrExceededRejectRetryLimit)
-				} else {
-					i.handleLeaseGranted(
-						ctx, key,
-						setError, setResponse,
-						keyStr, leaseGetResp.CAS,
-					)
-				}
+			if retryCount < len(i.options.sleepDurations) {
+				i.sess.AddDelayedCall(i.options.sleepDurations[retryCount], func() {
+					retryCount++
+
+					leaseGetFn = i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
+					i.sess.AddNextCall(nextFn)
+				})
 				return
 			}
 
-			i.sess.AddDelayedCall(i.options.sleepDurations[retryCount], func() {
-				retryCount++
+			if !i.options.errorOnRetryLimit {
+				doFillFunc()
+				return
+			}
 
-				leaseGetFn = i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
-				i.sess.AddNextCall(nextFn)
-			})
+			setResponseError(ErrExceededRejectRetryLimit)
 			return
 		}
 
-		setError(ErrInvalidLeaseGetStatus)
+		handleCacheError(ErrInvalidLeaseGetStatus)
 	}
 
 	i.sess.AddNextCall(nextFn)
