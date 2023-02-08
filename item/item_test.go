@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/fake"
 	"github.com/QuangTung97/memproxy/mocks"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -1005,4 +1006,49 @@ func TestMultiGetFiller(t *testing.T) {
 			{user1.GetKey(), user2.GetKey()},
 		}, calledKeys)
 	})
+}
+
+func TestItem_WithFakePipeline(t *testing.T) {
+	mc := fake.New()
+	pipe := mc.NewPipeline()
+
+	fillCalls := 0
+
+	it := New[userValue, userKey](
+		pipe, unmarshalUser,
+		func(ctx context.Context, key userKey) func() (userValue, error) {
+			return func() (userValue, error) {
+				fillCalls++
+				return userValue{
+					Tenant: "TENANT01",
+					Name:   "user01",
+					Age:    22,
+				}, nil
+			}
+		},
+	)
+
+	resp, err := it.Get(newContext(), userKey{
+		Tenant: "TENANT01",
+		Name:   "user01",
+	})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, userValue{
+		Tenant: "TENANT01",
+		Name:   "user01",
+		Age:    22,
+	}, resp)
+
+	resp, err = it.Get(newContext(), userKey{
+		Tenant: "TENANT01",
+		Name:   "user01",
+	})()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, userValue{
+		Tenant: "TENANT01",
+		Name:   "user01",
+		Age:    22,
+	}, resp)
+
+	assert.Equal(t, 1, fillCalls)
 }

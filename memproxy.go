@@ -30,12 +30,12 @@ type Pipeline interface {
 	LowerSession() Session
 }
 
-// SessionProvider for controlling delayed tasks
+// SessionProvider for controlling delayed tasks, this object is Thread Safe
 type SessionProvider interface {
 	New() Session
 }
 
-// Session controlling session values & delayed tasks
+// Session controlling session values & delayed tasks, this object is NOT Thread Safe
 type Session interface {
 	AddNextCall(fn func())
 	AddDelayedCall(d time.Duration, fn func())
