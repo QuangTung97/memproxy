@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/QuangTung97/memproxy"
+	"log"
 	"time"
 )
 
@@ -28,6 +29,7 @@ type itemOptions struct {
 	sleepDurations      []time.Duration
 	errorOnRetryLimit   bool
 	fillingOnCacheError bool
+	errorLogger         func(err error)
 }
 
 // Option ...
@@ -43,10 +45,16 @@ func DefaultSleepDurations() []time.Duration {
 	}
 }
 
+func defaultErrorLogger(err error) {
+	log.Println("[ERROR] item: get error:", err)
+}
+
 func computeOptions(options []Option) *itemOptions {
 	opts := &itemOptions{
-		sleepDurations:    DefaultSleepDurations(),
-		errorOnRetryLimit: false,
+		sleepDurations:      DefaultSleepDurations(),
+		errorOnRetryLimit:   false,
+		fillingOnCacheError: false,
+		errorLogger:         defaultErrorLogger,
 	}
 
 	for _, fn := range options {
@@ -76,6 +84,13 @@ func WithEnableFillingOnCacheError(enable bool) Option {
 	}
 }
 
+// WithErrorLogger ...
+func WithErrorLogger(logger func(err error)) Option {
+	return func(opts *itemOptions) {
+		opts.errorLogger = logger
+	}
+}
+
 // ErrNotFound ONLY be returned from the filler function, to do delete of lease get key in the memcached server
 var ErrNotFound = errors.New("item: not found")
 
@@ -84,6 +99,81 @@ var ErrExceededRejectRetryLimit = errors.New("item: exceeded lease rejected retr
 
 // ErrInvalidLeaseGetStatus ...
 var ErrInvalidLeaseGetStatus = errors.New("item: exceeded lease get response status")
+
+type multiGetState[T Value, K Key] struct {
+	keys   []K
+	result map[K]T
+	err    error
+}
+
+type multiGetFillerConfig struct {
+	deleteOnNotFound bool
+}
+
+// MultiGetFillerOption ...
+type MultiGetFillerOption func(conf *multiGetFillerConfig)
+
+// WithMultiGetEnableDeleteOnNotFound ...
+func WithMultiGetEnableDeleteOnNotFound(enable bool) MultiGetFillerOption {
+	return func(conf *multiGetFillerConfig) {
+		conf.deleteOnNotFound = enable
+	}
+}
+
+// NewMultiGetFiller ...
+//
+//revive:disable-next-line:cognitive-complexity
+func NewMultiGetFiller[T Value, K Key](
+	multiGetFunc func(ctx context.Context, keys []K) ([]T, error),
+	getKey func(v T) K,
+	options ...MultiGetFillerOption,
+) Filler[T, K] {
+	conf := &multiGetFillerConfig{
+		deleteOnNotFound: false,
+	}
+	for _, opt := range options {
+		opt(conf)
+	}
+
+	var state *multiGetState[T, K]
+
+	return func(ctx context.Context, key K) func() (T, error) {
+		if state == nil {
+			state = &multiGetState[T, K]{
+				result: map[K]T{},
+			}
+		}
+		s := state
+		s.keys = append(s.keys, key)
+
+		return func() (T, error) {
+			if state != nil {
+				state = nil
+
+				values, err := multiGetFunc(ctx, s.keys)
+				if err != nil {
+					s.err = err
+				} else {
+					for _, v := range values {
+						s.result[getKey(v)] = v
+					}
+				}
+			}
+
+			if s.err != nil {
+				var empty T
+				return empty, s.err
+			}
+
+			result, ok := s.result[key]
+			if !ok && conf.deleteOnNotFound {
+				var empty T
+				return empty, ErrNotFound
+			}
+			return result, nil
+		}
+	}
+}
 
 // New ...
 func New[T Value, K Key](
@@ -181,6 +271,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 	var nextFn func()
 
 	setResponseError := func(err error) {
+		i.options.errorLogger(err)
 		i.getKeys[key] = getResultType[T]{
 			err: err,
 		}
@@ -206,6 +297,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 		handleCacheError := func(err error) {
 			if i.options.fillingOnCacheError {
 				leaseGetResp = memproxy.LeaseGetResponse{}
+				i.options.errorLogger(err)
 				doFillFunc()
 			} else {
 				setResponseError(err)

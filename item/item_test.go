@@ -628,7 +628,13 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 	})
 
 	t.Run("continuing-get-from-db---when-lease-get-return-error", func(t *testing.T) {
-		i := newItemTest(WithEnableFillingOnCacheError(true))
+		var logErr error
+		i := newItemTest(
+			WithEnableFillingOnCacheError(true),
+			WithErrorLogger(func(err error) {
+				logErr = err
+			}),
+		)
 
 		i.stubLeaseGet(
 			memproxy.LeaseGetResponse{
@@ -663,10 +669,18 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
 
 		assert.Equal(t, 0, len(i.pipe.LeaseSetCalls()))
+
+		assert.Equal(t, errors.New("lease get error"), logErr)
 	})
 
 	t.Run("error-when-fill-error---after-lease-get-return-error", func(t *testing.T) {
-		i := newItemTest(WithEnableFillingOnCacheError(true))
+		var logErr error
+		i := newItemTest(
+			WithEnableFillingOnCacheError(true),
+			WithErrorLogger(func(err error) {
+				logErr = err
+			}),
+		)
 
 		i.stubLeaseGet(
 			memproxy.LeaseGetResponse{
@@ -695,6 +709,8 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
 
 		assert.Equal(t, 0, len(i.pipe.LeaseSetCalls()))
+
+		assert.Equal(t, errors.New("fill error"), logErr)
 	})
 }
 
@@ -814,5 +830,179 @@ func TestItem__Multi(t *testing.T) {
 			fillFuncAction(user1.GetKey().String()),
 			leaseSetAction(user1.GetKey().String()),
 		}, i.actions)
+	})
+}
+
+func TestMultiGetFiller(t *testing.T) {
+	t.Run("disable-delete-on-not-found", func(t *testing.T) {
+		user1 := userValue{
+			Tenant: "TENANT01",
+			Name:   "user01",
+			Age:    31,
+		}
+		user2 := userValue{
+			Tenant: "TENANT01",
+			Name:   "user02",
+			Age:    32,
+		}
+		user3 := userValue{
+			Tenant: "TENANT02",
+			Name:   "user03",
+			Age:    33,
+		}
+
+		var calledKeys [][]userKey
+		values := [][]userValue{
+			{user1, user2},
+			{user3},
+		}
+
+		filler := NewMultiGetFiller[userValue, userKey](
+			func(ctx context.Context, keys []userKey) ([]userValue, error) {
+				index := len(calledKeys)
+				calledKeys = append(calledKeys, keys)
+				return values[index], nil
+			},
+			userValue.GetKey,
+		)
+
+		fn1 := filler(newContext(), user1.GetKey())
+		fn2 := filler(newContext(), user2.GetKey())
+		fn3 := filler(newContext(), user3.GetKey())
+
+		resp1, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user1, resp1)
+
+		resp2, err := fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user2, resp2)
+
+		resp3, err := fn3()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, userValue{}, resp3)
+
+		// Get Again
+		fn2 = filler(newContext(), user2.GetKey())
+		fn3 = filler(newContext(), user3.GetKey())
+
+		resp2, err = fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, userValue{}, resp2)
+
+		resp3, err = fn3()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user3, resp3)
+
+		assert.Equal(t, [][]userKey{
+			{user1.GetKey(), user2.GetKey(), user3.GetKey()},
+			{user2.GetKey(), user3.GetKey()},
+		}, calledKeys)
+	})
+
+	t.Run("enable-delete-on-not-found", func(t *testing.T) {
+		user1 := userValue{
+			Tenant: "TENANT01",
+			Name:   "user01",
+			Age:    31,
+		}
+		user2 := userValue{
+			Tenant: "TENANT01",
+			Name:   "user02",
+			Age:    32,
+		}
+		user3 := userValue{
+			Tenant: "TENANT02",
+			Name:   "user03",
+			Age:    33,
+		}
+
+		var calledKeys [][]userKey
+		values := [][]userValue{
+			{user1, user2},
+			{user3},
+		}
+
+		filler := NewMultiGetFiller[userValue, userKey](
+			func(ctx context.Context, keys []userKey) ([]userValue, error) {
+				index := len(calledKeys)
+				calledKeys = append(calledKeys, keys)
+				return values[index], nil
+			},
+			userValue.GetKey,
+			WithMultiGetEnableDeleteOnNotFound(true),
+		)
+
+		fn1 := filler(newContext(), user1.GetKey())
+		fn2 := filler(newContext(), user2.GetKey())
+		fn3 := filler(newContext(), user3.GetKey())
+
+		resp1, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user1, resp1)
+
+		resp2, err := fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user2, resp2)
+
+		resp3, err := fn3()
+		assert.Equal(t, ErrNotFound, err)
+		assert.Equal(t, userValue{}, resp3)
+
+		// Get Again
+		fn2 = filler(newContext(), user2.GetKey())
+		fn3 = filler(newContext(), user3.GetKey())
+
+		resp2, err = fn2()
+		assert.Equal(t, ErrNotFound, err)
+		assert.Equal(t, userValue{}, resp2)
+
+		resp3, err = fn3()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user3, resp3)
+
+		assert.Equal(t, [][]userKey{
+			{user1.GetKey(), user2.GetKey(), user3.GetKey()},
+			{user2.GetKey(), user3.GetKey()},
+		}, calledKeys)
+	})
+
+	t.Run("multi-get-return-errors", func(t *testing.T) {
+		user1 := userValue{
+			Tenant: "TENANT01",
+			Name:   "user01",
+			Age:    31,
+		}
+		user2 := userValue{
+			Tenant: "TENANT01",
+			Name:   "user02",
+			Age:    32,
+		}
+
+		var calledKeys [][]userKey
+
+		getErr := errors.New("multi get error")
+		filler := NewMultiGetFiller[userValue, userKey](
+			func(ctx context.Context, keys []userKey) ([]userValue, error) {
+				calledKeys = append(calledKeys, keys)
+				return nil, getErr
+			},
+			userValue.GetKey,
+		)
+
+		fn1 := filler(newContext(), user1.GetKey())
+		fn2 := filler(newContext(), user2.GetKey())
+
+		resp1, err := fn1()
+		assert.Equal(t, getErr, err)
+		assert.Equal(t, userValue{}, resp1)
+
+		resp2, err := fn2()
+		assert.Equal(t, getErr, err)
+		assert.Equal(t, userValue{}, resp2)
+
+		assert.Equal(t, [][]userKey{
+			{user1.GetKey(), user2.GetKey()},
+		}, calledKeys)
 	})
 }
