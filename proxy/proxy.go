@@ -46,7 +46,12 @@ type Pipeline struct {
 	//revive:disable-next-line:nested-structs
 	needExecServerSet map[ServerID]struct{}
 
-	leaseSetServers map[string]ServerID
+	leaseSetServers map[string]leaseSetState
+}
+
+type leaseSetState struct {
+	valid    bool // for preventing a special race condition
+	serverID ServerID
 }
 
 // Pipeline ...
@@ -64,7 +69,7 @@ func (m *Memcache) Pipeline(
 
 		pipelines: map[ServerID]memproxy.Pipeline{},
 
-		leaseSetServers: map[string]ServerID{},
+		leaseSetServers: map[string]leaseSetState{},
 	}
 }
 
@@ -115,7 +120,20 @@ func (p *Pipeline) setKeyForLeaseSet(
 	serverID ServerID,
 ) {
 	if resp.Status == memproxy.LeaseGetStatusLeaseGranted || resp.Status == memproxy.LeaseGetStatusLeaseRejected {
-		p.leaseSetServers[key] = serverID
+		prev, ok := p.leaseSetServers[key]
+		if ok {
+			if prev.serverID != serverID {
+				prev.valid = false
+				p.leaseSetServers[key] = prev
+				return
+			}
+			return
+		}
+
+		p.leaseSetServers[key] = leaseSetState{
+			valid:    true,
+			serverID: serverID,
+		}
 	}
 }
 
@@ -171,13 +189,13 @@ func (p *Pipeline) LeaseSet(
 	key string, data []byte, cas uint64,
 	options memproxy.LeaseSetOptions,
 ) func() (memproxy.LeaseSetResponse, error) {
-	serverID, ok := p.leaseSetServers[key]
-	if !ok {
+	setState, ok := p.leaseSetServers[key]
+	if !ok || !setState.valid {
 		return func() (memproxy.LeaseSetResponse, error) {
 			return memproxy.LeaseSetResponse{}, nil
 		}
 	}
-	pipe := p.getRoutePipeline(serverID)
+	pipe := p.getRoutePipeline(setState.serverID)
 	return pipe.LeaseSet(key, data, cas, options)
 }
 

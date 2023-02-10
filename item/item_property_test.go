@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/QuangTung97/go-memcache/memcache"
 	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/proxy"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"sync"
@@ -81,6 +82,37 @@ func newItemPropertyTest(t *testing.T) *itemPropertyTest {
 	return p
 }
 
+func newItemPropertyTestWithProxy(t *testing.T) *itemPropertyTest {
+	p := &itemPropertyTest{}
+
+	client, err := memcache.New("localhost:11211", 3)
+	if err != nil {
+		panic(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	p.client = client
+
+	servers := []proxy.SimpleServerConfig{
+		{
+			Host: "localhost",
+			Port: 11211,
+		},
+	}
+	mc, closeFunc, err := proxy.NewSimpleReplicatedMemcache(
+		servers, 3,
+		proxy.NewSimpleStats(servers),
+	)
+	if err != nil {
+		panic(err)
+	}
+	t.Cleanup(closeFunc)
+	p.mc = mc
+
+	p.sessProvider = memproxy.NewSessionProvider()
+
+	return p
+}
+
 func (p *itemPropertyTest) testConsistency(t *testing.T) {
 	var wg sync.WaitGroup
 
@@ -148,6 +180,19 @@ func TestProperty_SingleKey(t *testing.T) {
 		fmt.Println("SEED:", seed)
 
 		p := newItemPropertyTest(t)
+
+		for i := 0; i < 100; i++ {
+			p.flushAll()
+			p.testConsistency(t)
+		}
+	})
+
+	t.Run("with-proxy", func(t *testing.T) {
+		seed := time.Now().UnixNano()
+		rand.Seed(seed)
+		fmt.Println("SEED:", seed)
+
+		p := newItemPropertyTestWithProxy(t)
 
 		for i := 0; i < 100; i++ {
 			p.flushAll()

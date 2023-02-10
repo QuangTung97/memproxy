@@ -180,6 +180,23 @@ func (p *pipelineTest) stubPipeLeaseGet(pipe *mocks.PipelineMock, resp memproxy.
 	}
 }
 
+func (p *pipelineTest) stubLeaseGetMulti(
+	pipe *mocks.PipelineMock,
+	respList []memproxy.LeaseGetResponse,
+	errList []error,
+) {
+	pipe.LeaseGetFunc = func(
+		key string, options memproxy.LeaseGetOptions,
+	) func() (memproxy.LeaseGetResponse, error) {
+		index := len(pipe.LeaseGetCalls()) - 1
+		p.appendAction(leaseGetAction(key))
+		return func() (memproxy.LeaseGetResponse, error) {
+			p.appendAction(leaseGetFuncAction(key))
+			return respList[index], errList[index]
+		}
+	}
+}
+
 func (p *pipelineTest) stubLeaseGet1(resp memproxy.LeaseGetResponse, err error) {
 	p.stubPipeLeaseGet(p.pipe1, resp, err)
 }
@@ -496,6 +513,176 @@ func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
 			leaseSetAction("KEY01"),
 			leaseSetFuncAction("KEY01"),
 		}, p.actions)
+	})
+
+	t.Run("lease-get-granted--then-failover--then-lease-get-again--then-set", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		const cas1 = 2255
+		const cas2 = 2266
+
+		p.stubHasNextAvail(true)
+
+		p.stubSelect(serverID1, serverID1, serverID2)
+		p.stubLeaseGetMulti(
+			p.pipe1,
+			[]memproxy.LeaseGetResponse{
+				{
+					Status: memproxy.LeaseGetStatusLeaseGranted,
+					CAS:    cas1,
+				},
+				{},
+			},
+			[]error{
+				nil,
+				errors.New("server error"),
+			},
+		)
+		p.stubLeaseGetMulti(
+			p.pipe2,
+			[]memproxy.LeaseGetResponse{
+				{
+					Status: memproxy.LeaseGetStatusLeaseGranted,
+					CAS:    cas2,
+				},
+			},
+			[]error{
+				nil,
+			},
+		)
+
+		fn1 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+		fn2 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+
+		resp1, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    cas1,
+		}, resp1)
+
+		resp2, err := fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    cas2,
+		}, resp2)
+
+		p.stubLeaseSet1(memproxy.LeaseSetResponse{}, nil)
+		p.stubLeaseSet2(memproxy.LeaseSetResponse{}, nil)
+
+		setFn := p.pipe.LeaseSet("KEY01", []byte("set data 01"), cas1, memproxy.LeaseSetOptions{})
+		setResp, err := setFn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseSetResponse{}, setResp)
+
+		get1Calls := p.pipe1.LeaseGetCalls()
+		assert.Equal(t, 2, len(get1Calls))
+
+		get2Calls := p.pipe2.LeaseGetCalls()
+		assert.Equal(t, 1, len(get2Calls))
+
+		setCalls1 := p.pipe1.LeaseSetCalls()
+		assert.Equal(t, 0, len(setCalls1))
+
+		setCalls2 := p.pipe2.LeaseSetCalls()
+		assert.Equal(t, 0, len(setCalls2))
+
+		assert.Equal(t, 3, len(p.selector.SelectServerCalls()))
+	})
+
+	t.Run("lease-get-failover-2-times--back-to-the-same--server--then-set", func(t *testing.T) {
+		p := newPipelineTest(t)
+
+		const cas1 = 2255
+		const cas2 = 2266
+		const cas3 = 2277
+
+		p.stubHasNextAvail(true)
+
+		p.stubSelect(serverID1, serverID1, serverID2, serverID2, serverID1)
+		p.stubLeaseGetMulti(
+			p.pipe1,
+			[]memproxy.LeaseGetResponse{
+				{
+					Status: memproxy.LeaseGetStatusLeaseGranted,
+					CAS:    cas1,
+				},
+				{},
+				{
+					Status: memproxy.LeaseGetStatusLeaseGranted,
+					CAS:    cas3,
+				},
+			},
+			[]error{
+				nil,
+				errors.New("server error"),
+				nil,
+			},
+		)
+		p.stubLeaseGetMulti(
+			p.pipe2,
+			[]memproxy.LeaseGetResponse{
+				{
+					Status: memproxy.LeaseGetStatusLeaseGranted,
+					CAS:    cas2,
+				},
+				{},
+			},
+			[]error{
+				nil,
+				errors.New("server error 2"),
+			},
+		)
+
+		fn1 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+		fn2 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+
+		resp1, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    cas1,
+		}, resp1)
+
+		resp2, err := fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    cas2,
+		}, resp2)
+
+		fn3 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+		resp3, err := fn3()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    cas3,
+		}, resp3)
+
+		p.stubLeaseSet1(memproxy.LeaseSetResponse{}, nil)
+		p.stubLeaseSet2(memproxy.LeaseSetResponse{}, nil)
+
+		setFn := p.pipe.LeaseSet("KEY01", []byte("set data 01"), cas1, memproxy.LeaseSetOptions{})
+		setResp, err := setFn()
+
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseSetResponse{}, setResp)
+
+		get1Calls := p.pipe1.LeaseGetCalls()
+		assert.Equal(t, 3, len(get1Calls))
+
+		get2Calls := p.pipe2.LeaseGetCalls()
+		assert.Equal(t, 2, len(get2Calls))
+
+		setCalls1 := p.pipe1.LeaseSetCalls()
+		assert.Equal(t, 0, len(setCalls1))
+
+		setCalls2 := p.pipe2.LeaseSetCalls()
+		assert.Equal(t, 0, len(setCalls2))
+
+		assert.Equal(t, 5, len(p.selector.SelectServerCalls()))
 	})
 }
 
