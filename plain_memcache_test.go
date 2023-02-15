@@ -300,3 +300,30 @@ func TestPlainMemcache__Finish_Do_Flush(t *testing.T) {
 		Data:   data,
 	}, getResp)
 }
+
+func TestPlainMemcache__With_Existing_Session(t *testing.T) {
+	client, err := memcache.New("localhost:11211", 1)
+	if err != nil {
+		panic(err)
+	}
+	t.Cleanup(func() {
+		_ = client.Close()
+	})
+
+	err = client.Pipeline().FlushAll()()
+	if err != nil {
+		panic(err)
+	}
+
+	cache := NewPlainMemcache(client,
+		WithPlainMemcacheLeaseDuration(7),
+		WithPlainMemcacheSessionProvider(NewSessionProvider()),
+	)
+
+	provider := NewSessionProvider()
+	sess := provider.New()
+
+	pipe := cache.Pipeline(context.Background(), WithPipelineExistingSession(sess))
+
+	assert.Same(t, sess.GetLower(), pipe.LowerSession())
+}
