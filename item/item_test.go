@@ -1010,7 +1010,7 @@ func TestMultiGetFiller(t *testing.T) {
 
 func TestItem_WithFakePipeline(t *testing.T) {
 	mc := fake.New()
-	pipe := mc.NewPipeline()
+	pipe := mc.Pipeline(newContext())
 
 	fillCalls := 0
 

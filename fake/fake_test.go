@@ -1,6 +1,7 @@
 package fake
 
 import (
+	"context"
 	"github.com/QuangTung97/memproxy"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -8,7 +9,7 @@ import (
 
 func newPipelineTest() memproxy.Pipeline {
 	mc := New()
-	return mc.NewPipeline()
+	return mc.Pipeline(context.Background())
 }
 
 func TestPipeline(t *testing.T) {
@@ -151,7 +152,7 @@ func TestPipeline(t *testing.T) {
 func TestPipeline__Do_Finish(t *testing.T) {
 	t.Run("call-finish", func(t *testing.T) {
 		mc := New()
-		pipe1 := mc.NewPipeline()
+		pipe1 := mc.Pipeline(context.Background())
 
 		resp1, err := pipe1.LeaseGet("KEY01", memproxy.LeaseGetOptions{})()
 		assert.Equal(t, nil, err)
@@ -160,7 +161,7 @@ func TestPipeline__Do_Finish(t *testing.T) {
 
 		pipe1.Finish()
 
-		pipe2 := mc.NewPipeline()
+		pipe2 := mc.Pipeline(context.Background())
 
 		resp2, err := pipe2.LeaseGet("KEY01", memproxy.LeaseGetOptions{})()
 		assert.Equal(t, nil, err)
@@ -173,7 +174,7 @@ func TestPipeline__Do_Finish(t *testing.T) {
 
 	t.Run("call-execute", func(t *testing.T) {
 		mc := New()
-		pipe1 := mc.NewPipeline()
+		pipe1 := mc.Pipeline(context.Background())
 
 		resp1, err := pipe1.LeaseGet("KEY01", memproxy.LeaseGetOptions{})()
 		assert.Equal(t, nil, err)
@@ -182,7 +183,7 @@ func TestPipeline__Do_Finish(t *testing.T) {
 
 		pipe1.Execute()
 
-		pipe2 := mc.NewPipeline()
+		pipe2 := mc.Pipeline(context.Background())
 
 		resp2, err := pipe2.LeaseGet("KEY01", memproxy.LeaseGetOptions{})()
 		assert.Equal(t, nil, err)
@@ -195,7 +196,7 @@ func TestPipeline__Do_Finish(t *testing.T) {
 
 	t.Run("lower-session", func(t *testing.T) {
 		mc := New()
-		pipe := mc.NewPipeline()
+		pipe := mc.Pipeline(context.Background())
 
 		sess := pipe.LowerSession()
 

@@ -1,6 +1,7 @@
 package fake
 
 import (
+	"context"
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/mocks"
 	"sync"
@@ -22,6 +23,8 @@ type Memcache struct {
 	entries map[string]Entry
 }
 
+var _ memproxy.Memcache = &Memcache{}
+
 // New ...
 func New() *Memcache {
 	return &Memcache{
@@ -36,10 +39,10 @@ func (m *Memcache) nextCAS() uint64 {
 	return m.cas
 }
 
-// NewPipeline returns a Fake Pipeline
+// Pipeline returns a Fake Pipeline
 //
 //revive:disable-next-line:cognitive-complexity
-func (m *Memcache) NewPipeline() memproxy.Pipeline {
+func (m *Memcache) Pipeline(_ context.Context, _ ...memproxy.PipelineOption) memproxy.Pipeline {
 	sess := m.sessProvider.New()
 	var calls []func()
 	doCalls := func() {
@@ -159,4 +162,9 @@ func (m *Memcache) NewPipeline() memproxy.Pipeline {
 	}
 
 	return pipe
+}
+
+// Close ...
+func (*Memcache) Close() error {
+	return nil
 }
