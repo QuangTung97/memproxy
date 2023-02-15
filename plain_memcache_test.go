@@ -26,10 +26,10 @@ func newPlainMemcacheTest(t *testing.T) *plainMemcacheTest {
 		panic(err)
 	}
 
-	cache := NewPlainMemcache(client, 7)
+	cache := NewPlainMemcache(client, WithPlainMemcacheLeaseDuration(7))
 
 	return &plainMemcacheTest{
-		pipe: cache.Pipeline(context.Background(), nil),
+		pipe: cache.Pipeline(context.Background()),
 	}
 }
 

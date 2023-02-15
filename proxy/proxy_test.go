@@ -90,13 +90,13 @@ func newPipelineTest(t *testing.T) *pipelineTest {
 	}
 
 	p.mc1.PipelineFunc = func(
-		ctx context.Context, sess memproxy.Session, options ...memproxy.PipelineOption,
+		ctx context.Context, options ...memproxy.PipelineOption,
 	) memproxy.Pipeline {
 		return p.pipe1
 	}
 
 	p.mc2.PipelineFunc = func(
-		ctx context.Context, sess memproxy.Session, options ...memproxy.PipelineOption,
+		ctx context.Context, options ...memproxy.PipelineOption,
 	) memproxy.Pipeline {
 		return p.pipe2
 	}
@@ -139,12 +139,10 @@ func newPipelineTest(t *testing.T) *pipelineTest {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, []SimpleServerConfig{server1, server2}, newCalls)
 
-	sessProvider := memproxy.NewSessionProvider()
-
 	p.client = mc
 	p.route = route
 	p.selector = selector
-	p.pipe = p.client.Pipeline(newContext(), sessProvider.New())
+	p.pipe = p.client.Pipeline(newContext())
 
 	return p
 }

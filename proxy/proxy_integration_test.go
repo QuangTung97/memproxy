@@ -16,7 +16,7 @@ func clearMemcache(c *memcache.Client) {
 	}
 }
 
-func newMemcacheWithProxy(t *testing.T) (memproxy.Memcache, memproxy.SessionProvider) {
+func newMemcacheWithProxy(t *testing.T) memproxy.Memcache {
 	clearClient, err := memcache.New("localhost:11211", 1)
 	if err != nil {
 		panic(err)
@@ -40,14 +40,13 @@ func newMemcacheWithProxy(t *testing.T) (memproxy.Memcache, memproxy.SessionProv
 	}
 	t.Cleanup(closeFunc)
 
-	sess := memproxy.NewSessionProvider()
-	return mc, sess
+	return mc
 }
 
 func TestProxyIntegration(t *testing.T) {
 	t.Run("simple-lease-get-set", func(t *testing.T) {
-		mc, provider := newMemcacheWithProxy(t)
-		pipe := mc.Pipeline(newContext(), provider.New())
+		mc := newMemcacheWithProxy(t)
+		pipe := mc.Pipeline(newContext())
 		defer pipe.Finish()
 
 		fn1 := pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
@@ -70,8 +69,8 @@ func TestProxyIntegration(t *testing.T) {
 	})
 
 	t.Run("simple-lease-get-set-multi", func(t *testing.T) {
-		mc, provider := newMemcacheWithProxy(t)
-		pipe := mc.Pipeline(newContext(), provider.New())
+		mc := newMemcacheWithProxy(t)
+		pipe := mc.Pipeline(newContext())
 		defer pipe.Finish()
 
 		const key1 = "KEY01"
@@ -122,8 +121,8 @@ func TestProxyIntegration(t *testing.T) {
 	})
 
 	t.Run("lease-finish-and-then-new-pipeline", func(t *testing.T) {
-		mc, provider := newMemcacheWithProxy(t)
-		pipe1 := mc.Pipeline(newContext(), provider.New())
+		mc := newMemcacheWithProxy(t)
+		pipe1 := mc.Pipeline(newContext())
 
 		const key1 = "KEY01"
 		value1 := []byte("some data 01")
@@ -138,7 +137,7 @@ func TestProxyIntegration(t *testing.T) {
 		pipe1.Finish()
 
 		// Get Again
-		pipe2 := mc.Pipeline(newContext(), provider.New())
+		pipe2 := mc.Pipeline(newContext())
 		fn3 := pipe2.LeaseGet(key1, memproxy.LeaseGetOptions{})
 		resp, err = fn3()
 		assert.Equal(t, nil, err)

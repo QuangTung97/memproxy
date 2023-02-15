@@ -8,15 +8,43 @@ import (
 
 // Memcache is thread safe
 type Memcache struct {
-	clients map[ServerID]memproxy.Memcache
-	route   Route
+	sessProvider memproxy.SessionProvider
+	clients      map[ServerID]memproxy.Memcache
+	route        Route
+}
+
+type memcacheConfig struct {
+	sessProvider memproxy.SessionProvider
+}
+
+func computeMemcacheConfig(options ...MemcacheOption) *memcacheConfig {
+	conf := &memcacheConfig{
+		sessProvider: memproxy.NewSessionProvider(),
+	}
+	for _, fn := range options {
+		fn(conf)
+	}
+	return conf
+}
+
+// MemcacheOption ...
+type MemcacheOption func(conf *memcacheConfig)
+
+// WithMemcacheSessionProvider ...
+func WithMemcacheSessionProvider(provider memproxy.SessionProvider) MemcacheOption {
+	return func(conf *memcacheConfig) {
+		conf.sessProvider = provider
+	}
 }
 
 // New ...
 func New[S ServerConfig](
 	conf Config[S],
 	newFunc func(conf S) memproxy.Memcache,
+	options ...MemcacheOption,
 ) (*Memcache, error) {
+	memcacheConf := computeMemcacheConfig(options...)
+
 	clients := map[ServerID]memproxy.Memcache{}
 
 	for _, server := range conf.Servers {
@@ -25,8 +53,9 @@ func New[S ServerConfig](
 	}
 
 	return &Memcache{
-		clients: clients,
-		route:   conf.Route,
+		sessProvider: memcacheConf.sessProvider,
+		clients:      clients,
+		route:        conf.Route,
 	}, nil
 }
 
@@ -56,8 +85,11 @@ type leaseSetState struct {
 
 // Pipeline ...
 func (m *Memcache) Pipeline(
-	ctx context.Context, sess memproxy.Session, _ ...memproxy.PipelineOption,
+	ctx context.Context, options ...memproxy.PipelineOption,
 ) memproxy.Pipeline {
+	conf := memproxy.ComputePipelineConfig(options)
+	sess := conf.GetSession(m.sessProvider)
+
 	return &Pipeline{
 		ctx: ctx,
 
@@ -88,7 +120,7 @@ func (m *Memcache) Close() error {
 func (p *Pipeline) getRoutePipeline(serverID ServerID) memproxy.Pipeline {
 	pipe, existed := p.pipelines[serverID]
 	if !existed {
-		pipe = p.client.clients[serverID].Pipeline(p.ctx, p.pipeSession)
+		pipe = p.client.clients[serverID].Pipeline(p.ctx, memproxy.WithPipelineExistingSession(p.pipeSession))
 		p.pipelines[serverID] = pipe
 	}
 
@@ -270,7 +302,7 @@ func NewSimpleReplicatedMemcache(
 			if err != nil {
 				panic(err)
 			}
-			return memproxy.NewPlainMemcache(client, 3)
+			return memproxy.NewPlainMemcache(client)
 		},
 	)
 	if err != nil {

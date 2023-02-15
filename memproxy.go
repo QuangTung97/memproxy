@@ -8,7 +8,7 @@ import (
 // Memcache represents a generic Memcache interface
 // implementations of this interface must be thread safe
 type Memcache interface {
-	Pipeline(ctx context.Context, sess Session, options ...PipelineOption) Pipeline
+	Pipeline(ctx context.Context, options ...PipelineOption) Pipeline
 
 	// Close ...
 	Close() error
@@ -98,8 +98,40 @@ type DeleteOptions struct {
 type DeleteResponse struct {
 }
 
-type pipelineOptions struct {
+//==============================================
+// Pipeline Options
+//==============================================
+
+// PipelineConfig ...
+type PipelineConfig struct {
+	existingSess Session
+}
+
+// GetSession ...
+func (c *PipelineConfig) GetSession(provider SessionProvider) Session {
+	if c.existingSess != nil {
+		return c.existingSess
+	}
+	return provider.New()
+}
+
+// ComputePipelineConfig ...
+func ComputePipelineConfig(options []PipelineOption) *PipelineConfig {
+	conf := &PipelineConfig{
+		existingSess: nil,
+	}
+	for _, fn := range options {
+		fn(conf)
+	}
+	return conf
 }
 
 // PipelineOption ...
-type PipelineOption func(opts *pipelineOptions)
+type PipelineOption func(conf *PipelineConfig)
+
+// WithPipelineExistingSession ...
+func WithPipelineExistingSession(sess Session) PipelineOption {
+	return func(conf *PipelineConfig) {
+		conf.existingSess = sess
+	}
+}

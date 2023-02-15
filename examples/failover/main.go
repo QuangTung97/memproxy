@@ -68,20 +68,18 @@ func main() {
 	}
 	defer closeFun()
 
-	sessProvider := memproxy.NewSessionProvider()
 	userSeq := 0
-
 	for {
-		doGetFromCache(mc, sessProvider, &userSeq)
+		doGetFromCache(mc, &userSeq)
 		time.Sleep(1 * time.Second)
 	}
 }
 
 func doGetFromCache(
-	mc memproxy.Memcache, sessProvider memproxy.SessionProvider,
+	mc memproxy.Memcache,
 	userSeq *int,
 ) {
-	pipe := mc.Pipeline(context.Background(), sessProvider.New())
+	pipe := mc.Pipeline(context.Background())
 	defer pipe.Finish()
 
 	*userSeq++

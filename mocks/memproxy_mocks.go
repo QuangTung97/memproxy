@@ -23,7 +23,7 @@ var _ Memcache = &MemcacheMock{}
 //			CloseFunc: func() error {
 //				panic("mock out the Close method")
 //			},
-//			PipelineFunc: func(ctx context.Context, sess memproxy.Session, options ...memproxy.PipelineOption) memproxy.Pipeline {
+//			PipelineFunc: func(ctx context.Context, options ...memproxy.PipelineOption) memproxy.Pipeline {
 //				panic("mock out the Pipeline method")
 //			},
 //		}
@@ -37,7 +37,7 @@ type MemcacheMock struct {
 	CloseFunc func() error
 
 	// PipelineFunc mocks the Pipeline method.
-	PipelineFunc func(ctx context.Context, sess memproxy.Session, options ...memproxy.PipelineOption) memproxy.Pipeline
+	PipelineFunc func(ctx context.Context, options ...memproxy.PipelineOption) memproxy.Pipeline
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -48,8 +48,6 @@ type MemcacheMock struct {
 		Pipeline []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Sess is the sess argument value.
-			Sess memproxy.Session
 			// Options is the options argument value.
 			Options []memproxy.PipelineOption
 		}
@@ -86,23 +84,21 @@ func (mock *MemcacheMock) CloseCalls() []struct {
 }
 
 // Pipeline calls PipelineFunc.
-func (mock *MemcacheMock) Pipeline(ctx context.Context, sess memproxy.Session, options ...memproxy.PipelineOption) memproxy.Pipeline {
+func (mock *MemcacheMock) Pipeline(ctx context.Context, options ...memproxy.PipelineOption) memproxy.Pipeline {
 	if mock.PipelineFunc == nil {
 		panic("MemcacheMock.PipelineFunc: method is nil but Memcache.Pipeline was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
-		Sess    memproxy.Session
 		Options []memproxy.PipelineOption
 	}{
 		Ctx:     ctx,
-		Sess:    sess,
 		Options: options,
 	}
 	mock.lockPipeline.Lock()
 	mock.calls.Pipeline = append(mock.calls.Pipeline, callInfo)
 	mock.lockPipeline.Unlock()
-	return mock.PipelineFunc(ctx, sess, options...)
+	return mock.PipelineFunc(ctx, options...)
 }
 
 // PipelineCalls gets all the calls that were made to Pipeline.
@@ -111,12 +107,10 @@ func (mock *MemcacheMock) Pipeline(ctx context.Context, sess memproxy.Session, o
 //	len(mockedMemcache.PipelineCalls())
 func (mock *MemcacheMock) PipelineCalls() []struct {
 	Ctx     context.Context
-	Sess    memproxy.Session
 	Options []memproxy.PipelineOption
 } {
 	var calls []struct {
 		Ctx     context.Context
-		Sess    memproxy.Session
 		Options []memproxy.PipelineOption
 	}
 	mock.lockPipeline.RLock()

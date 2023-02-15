@@ -15,16 +15,14 @@ import (
 
 type itemPropertyTest struct {
 	client *memcache.Client
-
-	mc           memproxy.Memcache
-	sessProvider memproxy.SessionProvider
+	mc     memproxy.Memcache
 
 	mut        sync.Mutex
 	currentAge int64
 }
 
 func (p *itemPropertyTest) newItem() (*Item[userValue, userKey], func()) {
-	pipe := p.mc.Pipeline(newContext(), p.sessProvider.New())
+	pipe := p.mc.Pipeline(newContext())
 	return New[userValue, userKey](
 		pipe, unmarshalUser,
 		NewMultiGetFiller[userValue, userKey](func(ctx context.Context, keys []userKey) ([]userValue, error) {
@@ -53,7 +51,7 @@ func (p *itemPropertyTest) updateAge(key userKey) {
 	p.currentAge++
 	p.mut.Unlock()
 
-	pipe := p.mc.Pipeline(newContext(), p.sessProvider.New())
+	pipe := p.mc.Pipeline(newContext())
 	pipe.Delete(key.String(), memproxy.DeleteOptions{})
 	pipe.Finish()
 }
@@ -76,9 +74,7 @@ func newItemPropertyTest(t *testing.T) *itemPropertyTest {
 	t.Cleanup(func() { _ = client.Close() })
 	p.client = client
 
-	p.mc = memproxy.NewPlainMemcache(client, 3)
-	p.sessProvider = memproxy.NewSessionProvider()
-
+	p.mc = memproxy.NewPlainMemcache(client)
 	return p
 }
 
@@ -107,8 +103,6 @@ func newItemPropertyTestWithProxy(t *testing.T) *itemPropertyTest {
 	}
 	t.Cleanup(closeFunc)
 	p.mc = mc
-
-	p.sessProvider = memproxy.NewSessionProvider()
 
 	return p
 }

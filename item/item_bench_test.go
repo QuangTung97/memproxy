@@ -66,21 +66,20 @@ func clearMemcache(c *memcache.Client) {
 	}
 }
 
-func newMemcache(b *testing.B) (memproxy.Memcache, memproxy.SessionProvider) {
+func newMemcache(b *testing.B) memproxy.Memcache {
 	client, err := memcache.New("localhost:11211", 1)
 	if err != nil {
 		panic(err)
 	}
 	clearMemcache(client)
 
-	mc := memproxy.NewPlainMemcache(client, 3)
+	mc := memproxy.NewPlainMemcache(client)
 	b.Cleanup(func() { _ = mc.Close() })
 
-	sess := memproxy.NewSessionProvider()
-	return mc, sess
+	return mc
 }
 
-func newMemcacheWithProxy(b *testing.B) (memproxy.Memcache, memproxy.SessionProvider) {
+func newMemcacheWithProxy(b *testing.B) memproxy.Memcache {
 	clearClient, err := memcache.New("localhost:11211", 1)
 	if err != nil {
 		panic(err)
@@ -105,19 +104,18 @@ func newMemcacheWithProxy(b *testing.B) (memproxy.Memcache, memproxy.SessionProv
 		panic(err)
 	}
 
-	sess := memproxy.NewSessionProvider()
-	return mc, sess
+	return mc
 }
 
 func BenchmarkItemGetSingle(b *testing.B) {
-	mc, sess := newMemcache(b)
+	mc := newMemcache(b)
 
 	b.ResetTimer()
 
 	value := int64(112)
 
 	for n := 0; n < b.N; n++ {
-		pipe := mc.Pipeline(context.Background(), sess.New())
+		pipe := mc.Pipeline(context.Background())
 
 		var filler Filler[benchValue, benchKey] = func(ctx context.Context, key benchKey) func() (benchValue, error) {
 			return func() (benchValue, error) {
@@ -171,17 +169,17 @@ func writeMemProfile() {
 
 func benchmarkWithBatch(
 	b *testing.B,
-	newFunc func(b *testing.B) (memproxy.Memcache, memproxy.SessionProvider),
+	newFunc func(b *testing.B) memproxy.Memcache,
 	batchSize int,
 ) {
-	mc, sess := newFunc(b)
+	mc := newFunc(b)
 
 	b.ResetTimer()
 
 	value := int64(112)
 
 	for n := 0; n < b.N; n++ {
-		pipe := mc.Pipeline(context.Background(), sess.New())
+		pipe := mc.Pipeline(context.Background())
 
 		var filler Filler[benchValue, benchKey] = func(ctx context.Context, key benchKey) func() (benchValue, error) {
 			return func() (benchValue, error) {

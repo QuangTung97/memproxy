@@ -29,6 +29,8 @@ jobs:
         run: make benchmark
       - name: Benchmark Stat
         run: benchstat benchmark_new.txt benchmark_new.txt
+      - name: Benchmark Memory Allocation
+        run: make membench
       - name: Convert coverage.out to coverage.lcov
         uses: jandelgado/gcov2lcov-action@v1.0.6
       - name: Coveralls

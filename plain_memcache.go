@@ -7,6 +7,7 @@ import (
 
 type plainMemcacheImpl struct {
 	client        *memcache.Client
+	sessProvider  SessionProvider
 	leaseDuration uint32
 }
 
@@ -18,18 +19,59 @@ type plainPipelineImpl struct {
 	leaseDuration uint32
 }
 
+type plainMemcacheConfig struct {
+	leaseDurationSeconds uint32
+	sessProvider         SessionProvider
+}
+
+func computePlainMemcacheConfig(options ...PlainMemcacheOption) *plainMemcacheConfig {
+	conf := &plainMemcacheConfig{
+		leaseDurationSeconds: 3,
+		sessProvider:         NewSessionProvider(),
+	}
+	for _, fn := range options {
+		fn(conf)
+	}
+	return conf
+}
+
+// PlainMemcacheOption ...
+type PlainMemcacheOption func(opts *plainMemcacheConfig)
+
+// WithPlainMemcacheLeaseDuration ...
+func WithPlainMemcacheLeaseDuration(leaseDurationSeconds uint32) PlainMemcacheOption {
+	return func(opts *plainMemcacheConfig) {
+		opts.leaseDurationSeconds = leaseDurationSeconds
+	}
+}
+
+// WithPlainMemcacheSessionProvider ...
+func WithPlainMemcacheSessionProvider(sessProvider SessionProvider) PlainMemcacheOption {
+	return func(opts *plainMemcacheConfig) {
+		opts.sessProvider = sessProvider
+	}
+}
+
 var _ Pipeline = &plainPipelineImpl{}
 
 // NewPlainMemcache a light wrapper around memcached client
-func NewPlainMemcache(client *memcache.Client, leaseDurationSeconds uint32) Memcache {
+func NewPlainMemcache(
+	client *memcache.Client,
+	options ...PlainMemcacheOption,
+) Memcache {
+	conf := computePlainMemcacheConfig(options...)
 	return &plainMemcacheImpl{
 		client:        client,
-		leaseDuration: leaseDurationSeconds,
+		sessProvider:  conf.sessProvider,
+		leaseDuration: conf.leaseDurationSeconds,
 	}
 }
 
 // Pipeline ...
-func (m *plainMemcacheImpl) Pipeline(_ context.Context, sess Session, _ ...PipelineOption) Pipeline {
+func (m *plainMemcacheImpl) Pipeline(_ context.Context, options ...PipelineOption) Pipeline {
+	conf := ComputePipelineConfig(options)
+	sess := conf.GetSession(m.sessProvider)
+
 	return &plainPipelineImpl{
 		sess:          sess,
 		pipeline:      m.client.Pipeline(),
