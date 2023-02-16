@@ -88,6 +88,7 @@ func newHashTest(options ...Option) *hashTest {
 	pipe.LowerSessionFunc = func() memproxy.Session {
 		return sess
 	}
+	pipe.ExecuteFunc = func() {}
 
 	h := &hashTest{
 		pipe: pipe,
@@ -965,6 +966,10 @@ func TestHash_Concurrent(t *testing.T) {
 			}
 		}
 
+		h.pipe.ExecuteFunc = func() {
+			callOrders = append(callOrders, "execute")
+		}
+
 		fn2 := h.hash.Get(newContext(),
 			customerUsageRootKey{
 				Tenant:     "TENANT02",
@@ -1000,6 +1005,9 @@ func TestHash_Concurrent(t *testing.T) {
 			"lease-set-call:TENANT01:41:",
 			"filler-func:TENANT02:42:",
 			"lease-set-call:TENANT02:42:",
+
+			"execute",
+			"execute",
 		}, callOrders)
 
 		getCalls := h.pipe.LeaseGetCalls()

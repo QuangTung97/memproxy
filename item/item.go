@@ -240,7 +240,8 @@ func (i *Item[T, K]) handleLeaseGranted(
 		setResponse(fillResp)
 
 		if cas > 0 {
-			i.pipeline.LeaseSet(keyStr, data, cas, memproxy.LeaseSetOptions{})
+			_ = i.pipeline.LeaseSet(keyStr, data, cas, memproxy.LeaseSetOptions{})
+			i.sess.AddNextCall(i.pipeline.Execute)
 		}
 	})
 }

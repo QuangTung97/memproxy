@@ -87,6 +87,8 @@ func newPropertyTest(maxHashesPerBucket int) *propertyTest {
 		return sess
 	}
 
+	pipe.ExecuteFunc = func() {}
+
 	bucketDataMap := map[BucketKey[customerUsageRootKey]][]byte{}
 
 	var filler Filler[customerUsageRootKey] = func(

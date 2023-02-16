@@ -207,5 +207,7 @@ func TestPipeline__Do_Finish(t *testing.T) {
 		sess.Execute()
 
 		assert.Equal(t, 1, calls)
+
+		assert.Nil(t, mc.Close())
 	})
 }

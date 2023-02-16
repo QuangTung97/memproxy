@@ -83,12 +83,20 @@ func leaseSetAction(key string) string {
 	return "lease-set: " + key
 }
 
+func leaseSetFuncAction(key string) string {
+	return "lease-set-func: " + key
+}
+
 func fillAction(key string) string {
 	return "fill: " + key
 }
 
 func fillFuncAction(key string) string {
 	return "fill-func: " + key
+}
+
+func executeAction() string {
+	return "execute-func"
 }
 
 func newItemTest(options ...Option) *itemTest {
@@ -132,6 +140,7 @@ func newItemTestWithSleepDurations(
 	pipe.LowerSessionFunc = func() memproxy.Session {
 		return sess
 	}
+	pipe.ExecuteFunc = func() { i.appendAction(executeAction()) }
 
 	i.sess = sess
 	i.pipe = pipe
@@ -187,6 +196,7 @@ func (i *itemTest) stubLeaseSet() {
 	) func() (memproxy.LeaseSetResponse, error) {
 		i.appendAction(leaseSetAction(key))
 		return func() (memproxy.LeaseSetResponse, error) {
+			i.appendAction(leaseSetFuncAction(key))
 			return memproxy.LeaseSetResponse{}, nil
 		}
 	}
@@ -781,6 +791,9 @@ func TestItem__Multi(t *testing.T) {
 
 			fillFuncAction(user2.GetKey().String()),
 			leaseSetAction(user2.GetKey().String()),
+
+			executeAction(),
+			executeAction(),
 		}, i.actions)
 	})
 
@@ -830,6 +843,8 @@ func TestItem__Multi(t *testing.T) {
 
 			fillFuncAction(user1.GetKey().String()),
 			leaseSetAction(user1.GetKey().String()),
+
+			executeAction(),
 		}, i.actions)
 	})
 }
