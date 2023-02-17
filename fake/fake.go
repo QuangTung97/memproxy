@@ -145,6 +145,7 @@ func (m *Memcache) Pipeline(_ context.Context, _ ...memproxy.PipelineOption) mem
 		calls = append(calls, callFn)
 
 		return func() (memproxy.DeleteResponse, error) {
+			doCalls()
 			return memproxy.DeleteResponse{}, nil
 		}
 	}

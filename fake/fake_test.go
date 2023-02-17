@@ -147,6 +147,31 @@ func TestPipeline(t *testing.T) {
 			CAS:    2,
 		}, resp2)
 	})
+
+	t.Run("lease-get-and-delete-and-lease-get-on-another-pipeline", func(t *testing.T) {
+		mc := New()
+		pipe1 := mc.Pipeline(context.Background())
+
+		fn1 := pipe1.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+		resp1, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    1,
+		}, resp1)
+
+		_, err = pipe1.Delete("KEY01", memproxy.DeleteOptions{})()
+		assert.Equal(t, nil, err)
+
+		pipe2 := mc.Pipeline(context.Background())
+		fn2 := pipe2.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
+		resp2, err := fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    2,
+		}, resp2)
+	})
 }
 
 func TestPipeline__Do_Finish(t *testing.T) {
