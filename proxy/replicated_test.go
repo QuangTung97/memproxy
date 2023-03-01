@@ -89,7 +89,7 @@ func TestReplicatedRoute(t *testing.T) {
 		r.selector.Reset()
 		assert.Equal(t, serverID2, r.selector.SelectServer(""))
 
-		assert.Equal(t, []uint64{randomMaxValues, randomMaxValues}, r.randArgs)
+		assert.Equal(t, []uint64{RandomMaxValues, RandomMaxValues}, r.randArgs)
 
 		getMemCalls := r.stats.GetMemUsageCalls()
 		assert.Equal(t, 4, len(getMemCalls))

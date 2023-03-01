@@ -11,8 +11,8 @@ type replicatedRoute struct {
 	stats ServerStats
 }
 
-// random from 0 => 999,999
-const randomMaxValues uint64 = 1000000
+// RandomMaxValues random from 0 => 999,999
+const RandomMaxValues uint64 = 1000000
 
 type replicatedRouteConfig struct {
 	// compute score from memory
@@ -156,7 +156,7 @@ func (s *replicatedRouteSelector) SelectServer(string) ServerID {
 		s.weightAccum = append(s.weightAccum, w)
 	}
 
-	randVal := s.route.conf.randFunc(randomMaxValues)
+	randVal := s.route.conf.randFunc(RandomMaxValues)
 
 	index, weights := computeChosenServer(s.weightAccum, s.route.conf.minPercent, randVal)
 	s.weightAccum = weights
@@ -222,7 +222,7 @@ func computeChosenServer(
 	weights = computeWeightAccumWithMinPercent(weights, minPercent)
 	sum := weights[len(weights)-1]
 
-	chosenWeight := float64(randVal) / float64(randomMaxValues) * sum
+	chosenWeight := float64(randVal) / float64(RandomMaxValues) * sum
 
 	for i, w := range weights {
 		if chosenWeight < w {
