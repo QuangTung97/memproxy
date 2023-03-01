@@ -268,6 +268,9 @@ func TestItem(t *testing.T) {
 		resp, err := fn()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, user, resp)
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(1), stats.HitCount)
 	})
 
 	t.Run("lease-get-with-error-returns-error", func(t *testing.T) {
@@ -328,6 +331,10 @@ func TestItem(t *testing.T) {
 		assert.Equal(t, "TENANT01:USER01", setCalls[0].Key)
 		assert.Equal(t, uint64(cas), setCalls[0].Cas)
 		assert.Equal(t, mustMarshalUser(user), setCalls[0].Data)
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(0), stats.HitCount)
+		assert.Equal(t, uint64(1), stats.FillCount)
 	})
 
 	t.Run("lease-get-lease-granted--fill-with-error-not-found", func(t *testing.T) {
@@ -381,6 +388,10 @@ func TestItem(t *testing.T) {
 		// Check Delete
 		assert.Equal(t, 1, len(i.pipe.DeleteCalls()))
 		assert.Equal(t, "TENANT01:USER01", i.pipe.DeleteCalls()[0].Key)
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(0), stats.HitCount)
+		assert.Equal(t, uint64(1), stats.FillCount)
 	})
 }
 
@@ -425,6 +436,13 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		assert.Equal(t, []time.Duration{
 			3 * time.Millisecond,
 		}, i.delayCalls)
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(1), stats.HitCount)
+		assert.Equal(t, uint64(0), stats.FillCount)
+		assert.Equal(t, uint64(1), stats.FirstRejectedCount)
+		assert.Equal(t, uint64(0), stats.SecondRejectedCount)
+		assert.Equal(t, uint64(1), stats.TotalRejectedCount)
 	})
 
 	t.Run("lease-rejected-multi-times", func(t *testing.T) {
@@ -477,6 +495,14 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 			7 * time.Millisecond,
 			13 * time.Millisecond,
 		}, i.delayCalls)
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(1), stats.HitCount)
+		assert.Equal(t, uint64(0), stats.FillCount)
+		assert.Equal(t, uint64(1), stats.FirstRejectedCount)
+		assert.Equal(t, uint64(1), stats.SecondRejectedCount)
+		assert.Equal(t, uint64(1), stats.ThirdRejectedCount)
+		assert.Equal(t, uint64(3), stats.TotalRejectedCount)
 	})
 
 	t.Run("lease-rejected-exceed-max-number-of-times--returns-error", func(t *testing.T) {
@@ -522,6 +548,14 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 			7 * time.Millisecond,
 			13 * time.Millisecond,
 		}, i.delayCalls)
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(0), stats.HitCount)
+		assert.Equal(t, uint64(0), stats.FillCount)
+		assert.Equal(t, uint64(1), stats.FirstRejectedCount)
+		assert.Equal(t, uint64(1), stats.SecondRejectedCount)
+		assert.Equal(t, uint64(1), stats.ThirdRejectedCount)
+		assert.Equal(t, uint64(4), stats.TotalRejectedCount)
 	})
 
 	t.Run("error-when-lease-get-status-invalid", func(t *testing.T) {
@@ -546,6 +580,10 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
 
 		assert.Equal(t, 0, len(i.delayCalls))
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(0), stats.HitCount)
+		assert.Equal(t, uint64(0), stats.FillCount)
 	})
 
 	t.Run("lease-rejected-exceed-max-number-of-times--still-do-fill", func(t *testing.T) {
@@ -614,6 +652,12 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		assert.Equal(t, "TENANT01:USER01", i.pipe.LeaseSetCalls()[0].Key)
 		assert.Equal(t, uint64(cas), i.pipe.LeaseSetCalls()[0].Cas)
 		assert.Equal(t, mustMarshalUser(user), i.pipe.LeaseSetCalls()[0].Data)
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(0), stats.HitCount)
+		assert.Equal(t, uint64(1), stats.FillCount)
+		assert.Equal(t, uint64(4), stats.TotalRejectedCount)
+		assert.Equal(t, uint64(0), stats.LeaseGetError)
 	})
 
 	t.Run("error-when-lease-get-return-error", func(t *testing.T) {
@@ -636,6 +680,12 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		calls := i.pipe.LeaseGetCalls()
 		assert.Equal(t, 1, len(calls))
 		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(0), stats.HitCount)
+		assert.Equal(t, uint64(0), stats.FillCount)
+		assert.Equal(t, uint64(0), stats.TotalRejectedCount)
+		assert.Equal(t, uint64(1), stats.LeaseGetError)
 	})
 
 	t.Run("continuing-get-from-db---when-lease-get-return-error", func(t *testing.T) {
@@ -682,6 +732,12 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		assert.Equal(t, 0, len(i.pipe.LeaseSetCalls()))
 
 		assert.Equal(t, errors.New("lease get error"), logErr)
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(0), stats.HitCount)
+		assert.Equal(t, uint64(1), stats.FillCount)
+		assert.Equal(t, uint64(0), stats.TotalRejectedCount)
+		assert.Equal(t, uint64(1), stats.LeaseGetError)
 	})
 
 	t.Run("error-when-fill-error---after-lease-get-return-error", func(t *testing.T) {
@@ -795,6 +851,12 @@ func TestItem__Multi(t *testing.T) {
 			executeAction(),
 			executeAction(),
 		}, i.actions)
+
+		// Check Stats
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(0), stats.HitCount)
+		assert.Equal(t, uint64(2), stats.FillCount)
+		assert.Equal(t, uint64(0), stats.TotalRejectedCount)
 	})
 
 	t.Run("get-multi-same-key", func(t *testing.T) {
@@ -846,6 +908,11 @@ func TestItem__Multi(t *testing.T) {
 
 			executeAction(),
 		}, i.actions)
+
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(0), stats.HitCount)
+		assert.Equal(t, uint64(1), stats.FillCount)
+		assert.Equal(t, uint64(0), stats.TotalRejectedCount)
 	})
 }
 

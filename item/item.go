@@ -204,6 +204,8 @@ type Item[T Value, K Key] struct {
 	filler      Filler[T, K]
 
 	getKeys map[K]getResultType[T]
+
+	stats Stats
 }
 
 type getResultType[T any] struct {
@@ -288,6 +290,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 		leaseGetResp, err := leaseGetFn()
 
 		doFillFunc := func() {
+			i.stats.FillCount++
 			i.handleLeaseGranted(
 				ctx, key,
 				setResponseError, setResponse,
@@ -296,6 +299,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 		}
 
 		handleCacheError := func(err error) {
+			i.stats.LeaseGetError++
 			if i.options.fillingOnCacheError {
 				leaseGetResp = memproxy.LeaseGetResponse{}
 				i.options.errorLogger(err)
@@ -311,6 +315,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 		}
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusFound {
+			i.stats.HitCount++
 			resp, err := i.unmarshaler(leaseGetResp.Data)
 			if err != nil {
 				setResponseError(err)
@@ -326,6 +331,8 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 		}
 
 		if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseRejected {
+			i.increaseRejectedCount(retryCount)
+
 			if retryCount < len(i.options.sleepDurations) {
 				i.sess.AddDelayedCall(i.options.sleepDurations[retryCount], func() {
 					retryCount++
@@ -353,6 +360,19 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 	return returnFn
 }
 
+func (i *Item[T, K]) increaseRejectedCount(retryCount int) {
+	i.stats.TotalRejectedCount++
+
+	switch retryCount {
+	case 0:
+		i.stats.FirstRejectedCount++
+	case 1:
+		i.stats.SecondRejectedCount++
+	case 2:
+		i.stats.ThirdRejectedCount++
+	}
+}
+
 // LowerSession ...
 func (i *Item[T, K]) LowerSession() memproxy.Session {
 	return i.sess.GetLower()
@@ -361,4 +381,22 @@ func (i *Item[T, K]) LowerSession() memproxy.Session {
 // Reset clear in-memory cached values
 func (i *Item[T, K]) Reset() {
 	i.getKeys = map[K]getResultType[T]{}
+}
+
+// Stats ...
+type Stats struct {
+	HitCount  uint64
+	FillCount uint64 // can also be interpreted as the miss count
+
+	LeaseGetError uint64 // lease get error count
+
+	FirstRejectedCount  uint64
+	SecondRejectedCount uint64
+	ThirdRejectedCount  uint64
+	TotalRejectedCount  uint64
+}
+
+// GetStats ...
+func (i *Item[T, K]) GetStats() Stats {
+	return i.stats
 }
