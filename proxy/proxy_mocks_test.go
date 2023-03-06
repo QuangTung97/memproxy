@@ -17,6 +17,9 @@ var _ Route = &RouteMock{}
 //
 //		// make and configure a mocked Route
 //		mockedRoute := &RouteMock{
+//			AllServerIDsFunc: func() []ServerID {
+//				panic("mock out the AllServerIDs method")
+//			},
 //			NewSelectorFunc: func() Selector {
 //				panic("mock out the NewSelector method")
 //			},
@@ -27,16 +30,50 @@ var _ Route = &RouteMock{}
 //
 //	}
 type RouteMock struct {
+	// AllServerIDsFunc mocks the AllServerIDs method.
+	AllServerIDsFunc func() []ServerID
+
 	// NewSelectorFunc mocks the NewSelector method.
 	NewSelectorFunc func() Selector
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// AllServerIDs holds details about calls to the AllServerIDs method.
+		AllServerIDs []struct {
+		}
 		// NewSelector holds details about calls to the NewSelector method.
 		NewSelector []struct {
 		}
 	}
-	lockNewSelector sync.RWMutex
+	lockAllServerIDs sync.RWMutex
+	lockNewSelector  sync.RWMutex
+}
+
+// AllServerIDs calls AllServerIDsFunc.
+func (mock *RouteMock) AllServerIDs() []ServerID {
+	if mock.AllServerIDsFunc == nil {
+		panic("RouteMock.AllServerIDsFunc: method is nil but Route.AllServerIDs was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockAllServerIDs.Lock()
+	mock.calls.AllServerIDs = append(mock.calls.AllServerIDs, callInfo)
+	mock.lockAllServerIDs.Unlock()
+	return mock.AllServerIDsFunc()
+}
+
+// AllServerIDsCalls gets all the calls that were made to AllServerIDs.
+// Check the length with:
+//
+//	len(mockedRoute.AllServerIDsCalls())
+func (mock *RouteMock) AllServerIDsCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockAllServerIDs.RLock()
+	calls = mock.calls.AllServerIDs
+	mock.lockAllServerIDs.RUnlock()
+	return calls
 }
 
 // NewSelector calls NewSelectorFunc.

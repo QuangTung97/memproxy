@@ -261,6 +261,17 @@ func TestReplicatedRoute_With_Real_Rand(*testing.T) {
 	fmt.Println(counters)
 }
 
+func TestReplicatedRoute_With_Empty_Server_List(t *testing.T) {
+	stats := &ServerStatsMock{}
+
+	assert.PanicsWithValue(t, "replicated route: servers can not be empty", func() {
+		NewReplicatedRoute(
+			[]ServerID{},
+			stats,
+		)
+	})
+}
+
 func TestComputeWeightAccumWithMinPercent(t *testing.T) {
 	table := []struct {
 		name       string

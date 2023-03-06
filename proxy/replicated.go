@@ -63,6 +63,10 @@ func NewReplicatedRoute(
 	stats ServerStats,
 	options ...ReplicatedRouteOption,
 ) Route {
+	if len(servers) == 0 {
+		panic("replicated route: servers can not be empty")
+	}
+
 	conf := &replicatedRouteConfig{
 		memScore: func(mem float64) float64 {
 			return mem
@@ -92,6 +96,11 @@ func (r *replicatedRoute) NewSelector() Selector {
 	}
 	s.remainingServers = s.computeRemainingServers()
 	return s
+}
+
+// AllServerIDs returns the list of all possible servers
+func (r *replicatedRoute) AllServerIDs() []ServerID {
+	return r.configServers
 }
 
 func (s *replicatedRouteSelector) getFailedServers() map[ServerID]struct{} {

@@ -17,6 +17,9 @@ type ServerConfig interface {
 type Route interface {
 	// NewSelector ...
 	NewSelector() Selector
+
+	// AllServerIDs returns list of all possible server ids
+	AllServerIDs() []ServerID
 }
 
 // Selector is NOT thread safe

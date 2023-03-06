@@ -121,6 +121,9 @@ func newPipelineTest(t *testing.T) *pipelineTest {
 	}
 
 	route := &RouteMock{}
+	route.AllServerIDsFunc = func() []ServerID {
+		return []ServerID{serverID1, serverID2}
+	}
 	route.NewSelectorFunc = func() Selector {
 		return selector
 	}
@@ -819,4 +822,54 @@ func TestPipeline__Delete(t *testing.T) {
 			deleteFuncAction("KEY01"),
 		}, p.actions)
 	})
+}
+
+func TestMemcache_Invalid_Servers_Empty(t *testing.T) {
+	mc, err := New[SimpleServerConfig](Config[SimpleServerConfig]{
+		Servers: []SimpleServerConfig{},
+		Route:   nil,
+	}, func(conf SimpleServerConfig) memproxy.Memcache {
+		return nil
+	})
+	assert.Equal(t, errors.New("proxy: empty server list"), err)
+	assert.Nil(t, mc)
+}
+
+func TestMemcache_Invalid_Missing_Route(t *testing.T) {
+	server1 := SimpleServerConfig{
+		ID:   serverID1,
+		Host: "localhost",
+		Port: 11211,
+	}
+
+	mc, err := New[SimpleServerConfig](Config[SimpleServerConfig]{
+		Servers: []SimpleServerConfig{server1},
+		Route:   nil,
+	}, func(conf SimpleServerConfig) memproxy.Memcache {
+		return nil
+	})
+	assert.Equal(t, errors.New("proxy: route is nil"), err)
+	assert.Nil(t, mc)
+}
+
+func TestMemcache_Route_Possible_Server_IDs__Not_In_Server_List(t *testing.T) {
+	server1 := SimpleServerConfig{
+		ID:   serverID1,
+		Host: "localhost",
+		Port: 11211,
+	}
+
+	route := &RouteMock{}
+	route.AllServerIDsFunc = func() []ServerID {
+		return []ServerID{41}
+	}
+
+	mc, err := New[SimpleServerConfig](Config[SimpleServerConfig]{
+		Servers: []SimpleServerConfig{server1},
+		Route:   route,
+	}, func(conf SimpleServerConfig) memproxy.Memcache {
+		return nil
+	})
+	assert.Equal(t, errors.New("proxy: server id '41' not in server list"), err)
+	assert.Nil(t, mc)
 }

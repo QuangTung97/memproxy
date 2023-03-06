@@ -2,6 +2,8 @@ package proxy
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"github.com/QuangTung97/go-memcache/memcache"
 	"github.com/QuangTung97/memproxy"
 )
@@ -43,6 +45,14 @@ func New[S ServerConfig](
 	newFunc func(conf S) memproxy.Memcache,
 	options ...MemcacheOption,
 ) (*Memcache, error) {
+	if len(conf.Servers) == 0 {
+		return nil, errors.New("proxy: empty server list")
+	}
+
+	if conf.Route == nil {
+		return nil, errors.New("proxy: route is nil")
+	}
+
 	memcacheConf := computeMemcacheConfig(options...)
 
 	clients := map[ServerID]memproxy.Memcache{}
@@ -50,6 +60,14 @@ func New[S ServerConfig](
 	for _, server := range conf.Servers {
 		client := newFunc(server)
 		clients[server.GetID()] = client
+	}
+
+	allServerIDs := conf.Route.AllServerIDs()
+	for _, serverID := range allServerIDs {
+		_, ok := clients[serverID]
+		if !ok {
+			return nil, fmt.Errorf("proxy: server id '%d' not in server list", serverID)
+		}
 	}
 
 	return &Memcache{
