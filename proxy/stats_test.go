@@ -88,7 +88,7 @@ func newServerStatsTest(t *testing.T, options ...SimpleStatsOption) *serverStats
 			Host: "localhost",
 			Port: 11202,
 		},
-	}, s.newArgs)
+	}, s.getNewArgs())
 
 	return s
 }
@@ -131,7 +131,7 @@ func TestSimpleServerStats(t *testing.T) {
 	t.Run("server-get-mem-error--is-server-failed", func(t *testing.T) {
 		s := newServerStatsTest(t, WithSimpleStatsCheckDuration(200*time.Millisecond))
 
-		assert.Equal(t, 2, len(s.newArgs))
+		assert.Equal(t, 2, len(s.getNewArgs()))
 
 		getCalls := s.clients[serverID1].GetMemUsageCalls()
 		assert.Equal(t, 1, len(getCalls))
@@ -160,13 +160,13 @@ func TestSimpleServerStats(t *testing.T) {
 
 		assert.Equal(t, true, s.stats.IsServerFailed(serverID1))
 		assert.Equal(t, false, s.stats.IsServerFailed(serverID2))
-		assert.Equal(t, 2, len(s.newArgs))
+		assert.Equal(t, 2, len(s.getNewArgs()))
 
 		// Notify Again But Nothing Is Called
 		s.stats.NotifyServerFailed(serverID1)
 		time.Sleep(40 * time.Millisecond)
 
-		assert.Equal(t, 2, len(s.newArgs))
+		assert.Equal(t, 2, len(s.getNewArgs()))
 
 		// Wait for Stats Check Duration
 		time.Sleep(140 * time.Millisecond)
@@ -279,7 +279,7 @@ func TestSimpleServerStats(t *testing.T) {
 	t.Run("multiple-time-out-happened", func(t *testing.T) {
 		s := newServerStatsTest(t, WithSimpleStatsCheckDuration(100*time.Millisecond))
 
-		assert.Equal(t, 2, len(s.newArgs))
+		assert.Equal(t, 2, len(s.getNewArgs()))
 
 		getCalls := s.clients[serverID1].GetMemUsageCalls()
 		assert.Equal(t, 1, len(getCalls))
