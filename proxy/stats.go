@@ -173,7 +173,7 @@ func drainSignal(signal <-chan struct{}) {
 
 func (s *SimpleServerStats) handleClient(server ServerID, client StatsClient, signal <-chan struct{}) {
 	alreadySignaled := false
-	timeAfter := time.After(s.conf.checkDuration)
+	timer := time.NewTimer(s.conf.checkDuration)
 
 	for {
 		select {
@@ -188,14 +188,19 @@ func (s *SimpleServerStats) handleClient(server ServerID, client StatsClient, si
 				continue
 			}
 			alreadySignaled = true
-			timeAfter = time.After(s.conf.checkDuration)
+
+			if !timer.Stop() {
+				<-timer.C
+			}
+			timer.Reset(s.conf.checkDuration)
 
 			client = s.clientGetMemory(server, client)
 
-		case <-timeAfter:
+		case <-timer.C:
 			client = s.clientGetMemory(server, client)
 			alreadySignaled = false
-			timeAfter = time.After(s.conf.checkDuration)
+
+			timer.Reset(s.conf.checkDuration)
 		}
 	}
 }

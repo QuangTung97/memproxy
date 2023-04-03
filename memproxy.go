@@ -98,9 +98,9 @@ type DeleteOptions struct {
 type DeleteResponse struct {
 }
 
-//==============================================
+// ==============================================
 // Pipeline Options
-//==============================================
+// ==============================================
 
 // PipelineConfig ...
 type PipelineConfig struct {

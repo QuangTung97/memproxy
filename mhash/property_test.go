@@ -269,9 +269,9 @@ func TestHash_PropertyBased__Simple_Upsert_Delete_Get(t *testing.T) {
 	upsertFn := p.updater.UpsertBucket(newContext(), rootKey, usage)
 	assert.Equal(t, nil, upsertFn())
 
-	//========================
+	// ========================
 	// Reset and Get Again
-	//========================
+	// ========================
 	p.hash.Reset()
 	fn = p.hash.Get(newContext(), rootKey, usage.getKey())
 
@@ -286,9 +286,9 @@ func TestHash_PropertyBased__Simple_Upsert_Delete_Get(t *testing.T) {
 	deleteFn := p.updater.DeleteBucket(newContext(), rootKey, usage.getKey())
 	assert.Equal(t, nil, deleteFn())
 
-	//========================
+	// ========================
 	// Get After Delete
-	//========================
+	// ========================
 	p.hash.Reset()
 	fn = p.hash.Get(newContext(), rootKey, usage.getKey())
 
@@ -346,9 +346,9 @@ func TestHash_PropertyBased__Simple_Upsert_Delete_Multiple_Keys__Same_Root_Key(t
 	upsertFn = p.updater.UpsertBucket(newContext(), rootKey, usage2)
 	assert.Equal(t, nil, upsertFn())
 
-	//========================
+	// ========================
 	// Get Again
-	//========================
+	// ========================
 	p.hash.Reset()
 	fn = p.hash.Get(newContext(), rootKey, usage1.getKey())
 
@@ -376,9 +376,9 @@ func TestHash_PropertyBased__Simple_Upsert_Delete_Multiple_Keys__Same_Root_Key(t
 	deleteFn := p.updater.DeleteBucket(newContext(), rootKey, usage1.getKey())
 	assert.Equal(t, nil, deleteFn())
 
-	//==============================
+	// ==============================
 	// Get After Delete
-	//==============================
+	// ==============================
 	p.hash.Reset()
 	fn = p.hash.Get(newContext(), rootKey, usage1.getKey())
 
@@ -444,9 +444,9 @@ func TestHash_PropertyBased__Multi_Upsert__And_Multi_Delete__In_Two_Step(t *test
 		}: data,
 	}, p.bucketDataMap)
 
-	//==================================
+	// ==================================
 	// Do Delete
-	//==================================
+	// ==================================
 	p.clearCalls()
 
 	fn1 = p.updater.DeleteBucket(newContext(), rootKey, usage1.getKey())
