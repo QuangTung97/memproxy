@@ -3,7 +3,7 @@ module github.com/QuangTung97/memproxy
 go 1.19
 
 require (
-	github.com/QuangTung97/go-memcache v0.5.5
+	github.com/QuangTung97/go-memcache v0.5.6
 	github.com/matryer/moq v0.3.0
 	github.com/mgechev/revive v1.3.1
 	github.com/spaolacci/murmur3 v1.1.0
