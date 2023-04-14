@@ -396,6 +396,92 @@ func TestSession_Lower_Priority__After_AddNextCall(t *testing.T) {
 	assert.Equal(t, []int{11, 13, 12, 14, 15}, calls)
 }
 
+func TestSession_Call_Execute_Only_On_Middle_Priority(t *testing.T) {
+	s := newSessionTest()
+
+	var calls []int
+
+	newCall := func(n int) *callMock {
+		return &callMock{
+			fn: func() {
+				calls = append(calls, n)
+			},
+		}
+	}
+
+	fn1 := newCall(11)
+	fn2 := newCall(12)
+	fn3 := newCall(13)
+	fn4 := newCall(14)
+	fn5 := newCall(15)
+
+	s.sess.AddNextCall(fn1.get())
+
+	lower := s.sess.GetLower()
+	lower.AddNextCall(fn2.get())
+
+	s.sess.AddNextCall(fn3.get())
+
+	lower.AddNextCall(fn4.get())
+
+	lower2 := lower.GetLower()
+	lower2.AddNextCall(fn5.get())
+
+	lower.Execute()
+	assert.Equal(t, []int{11, 13, 12, 14}, calls)
+
+	calls = nil
+	lower2.Execute()
+	assert.Equal(t, []int{15}, calls)
+}
+
+func TestSession_Call_Execute_Only_On_Highest_Priority(t *testing.T) {
+	s := newSessionTest()
+
+	var calls []int
+
+	newCall := func(n int) *callMock {
+		return &callMock{
+			fn: func() {
+				calls = append(calls, n)
+			},
+		}
+	}
+
+	fn1 := newCall(11)
+	fn2 := newCall(12)
+	fn3 := newCall(13)
+	fn4 := newCall(14)
+	fn5 := newCall(15)
+
+	s.sess.AddNextCall(fn1.get())
+
+	lower := s.sess.GetLower()
+	lower.AddNextCall(fn2.get())
+
+	s.sess.AddNextCall(fn3.get())
+
+	lower.AddNextCall(fn4.get())
+
+	lower2 := lower.GetLower()
+	lower2.AddNextCall(fn5.get())
+
+	s.sess.Execute()
+	assert.Equal(t, []int{11, 13}, calls)
+
+	calls = nil
+	lower.Execute()
+	assert.Equal(t, []int{12, 14}, calls)
+
+	calls = nil
+	lower.Execute()
+	assert.Equal(t, []int(nil), calls)
+
+	calls = nil
+	lower2.Execute()
+	assert.Equal(t, []int{15}, calls)
+}
+
 func TestSession_Lower_Priority__Before_AddNextCall__And_After_Execute__Multi_Levels(t *testing.T) {
 	s := newSessionTest()
 
