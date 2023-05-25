@@ -13,13 +13,13 @@ and then set back the fetched data to the memcached server.
 
 ### But how to make the data consistent between memcached and database?
 
-The solution used for this library is **invalidating (deleting) keys on database updates**.
+The solution will be used for this library is **invalidating (deleting) keys on database updates**.
 
 The general flow will look like this:
 ![Invalidate Flow](images/invalidate-flow.png)
 
 1. First, user request will open a transaction, does the update as normal,
-   and then insert the list of **invalidated keys** in somewhere before
+   and then the application will specifies and inserts the list of **invalidated keys** in some table before
    commit the transaction (*Step 1 to 4*).
    Reader familiar with patterns in distributed systems & microservices
    will recognize this
@@ -32,3 +32,10 @@ The general flow will look like this:
     * Helps mitigate the case the background job not working,
       or it can not proceed because some errors has not been handled gracefully.
 3. The background job read the invalidated keys and does the deletion again (*Step 6 and 7*).
+
+### Race condition when deleting keys
+Even with the Transactional Outbox Pattern, there is still a **race condition**
+that can make data in the cache be **staled indefinitely**.
+
+Consider the execution:
+![Race Condition](images/race-condition.png)
