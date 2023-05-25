@@ -23,3 +23,5 @@ This library helps to utilize memcached in a consistent and efficient way.
 3. [Preventing Thundering Herd](docs/thundering-herd.md)
 
 ## Usage
+
+Check out the [Example](examples/failover/main.go)
