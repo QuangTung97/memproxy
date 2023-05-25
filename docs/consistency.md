@@ -34,8 +34,22 @@ The general flow will look like this:
 3. The background job read the invalidated keys and does the deletion again (*Step 6 and 7*).
 
 ### Race condition when deleting keys
+
 Even with the Transactional Outbox Pattern, there is still a **race condition**
 that can make data in the cache be **staled indefinitely**.
 
 Consider the execution:
+
 ![Race Condition](images/race-condition.png)
+
+1. At the start, the database contains the variable **x = v1**, the memcached server is empty.
+2. **User Request 1** read from memcached => not found the cached key for **x** => then does the read from database.
+3. In the same time, **User Request 2** started, update the variable **x** from **x = v1** to **x = v2**.
+And then do delete the key on memcached server, this deletion does nothing because no key existed in the cache.
+4. **User Request 1** experiences a network problem that makes the **Set back to cache with x = v1**
+operation take quite a long time,
+long enough that the step 4 **Delete key** has already completed.
+
+The final result, memcached server will store the cache key contains **x = v1**
+and serves that staled value **indefinitely** unless other updates happened for the key **x**.
+
