@@ -8,21 +8,21 @@ import (
 	"time"
 )
 
-// Value ...
+// Value is the value constraint
 type Value interface {
 	Marshal() ([]byte, error)
 }
 
-// Key ...
+// Key is the key constraint
 type Key interface {
 	comparable
 	String() string
 }
 
-// Unmarshaler ...
+// Unmarshaler transforms raw bytes from memcached servers to the correct type
 type Unmarshaler[T any] func(data []byte) (T, error)
 
-// Filler ...
+// Filler is for getting data from the backing store and set back to memcached servers
 type Filler[T any, K any] func(ctx context.Context, key K) func() (T, error)
 
 type itemOptions struct {
@@ -63,28 +63,33 @@ func computeOptions(options []Option) *itemOptions {
 	return opts
 }
 
-// WithSleepDurations ...
+// WithSleepDurations configures the sleep durations and number of retries after Lease Get returns Rejected status
+// default is the value of DefaultSleepDurations()
 func WithSleepDurations(durations ...time.Duration) Option {
 	return func(opts *itemOptions) {
 		opts.sleepDurations = durations
 	}
 }
 
-// WithEnableErrorOnExceedRetryLimit ...
+// WithEnableErrorOnExceedRetryLimit enables returning error if sleepDurations exceeded
+// when enable = true, and after retried all the durations configured by WithSleepDurations,
+// the Item.Get will return the error ErrExceededRejectRetryLimit
+// default enable = false
 func WithEnableErrorOnExceedRetryLimit(enable bool) Option {
 	return func(opts *itemOptions) {
 		opts.errorOnRetryLimit = enable
 	}
 }
 
-// WithEnableFillingOnCacheError continue to read from DB when get from memcached returns error
+// WithEnableFillingOnCacheError when enable = true, continue to read from DB when get from memcached returns error
+// default enable = false
 func WithEnableFillingOnCacheError(enable bool) Option {
 	return func(opts *itemOptions) {
 		opts.fillingOnCacheError = enable
 	}
 }
 
-// WithErrorLogger ...
+// WithErrorLogger configures the error logger when there are problems with the memcache client or unmarshalling
 func WithErrorLogger(logger func(err error)) Option {
 	return func(opts *itemOptions) {
 		opts.errorLogger = logger
@@ -98,7 +103,7 @@ var ErrNotFound = errors.New("item: not found")
 var ErrExceededRejectRetryLimit = errors.New("item: exceeded lease rejected retry limit")
 
 // ErrInvalidLeaseGetStatus ...
-var ErrInvalidLeaseGetStatus = errors.New("item: exceeded lease get response status")
+var ErrInvalidLeaseGetStatus = errors.New("item: invalid lease get response status")
 
 type multiGetState[T Value, K Key] struct {
 	keys   []K
@@ -113,7 +118,9 @@ type multiGetFillerConfig struct {
 // MultiGetFillerOption ...
 type MultiGetFillerOption func(conf *multiGetFillerConfig)
 
-// WithMultiGetEnableDeleteOnNotFound ...
+// WithMultiGetEnableDeleteOnNotFound when enable = true will delete the empty
+// key-value (used for lease get) from memcached server
+// when the multiGetFunc not returning the corresponding values for the keys
 func WithMultiGetEnableDeleteOnNotFound(enable bool) MultiGetFillerOption {
 	return func(conf *multiGetFillerConfig) {
 		conf.deleteOnNotFound = enable
