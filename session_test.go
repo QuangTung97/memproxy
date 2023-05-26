@@ -77,6 +77,60 @@ func TestSessionAddNextCall(t *testing.T) {
 	assert.Equal(t, 1, fn1.count)
 }
 
+func TestSessionAddNextCall__AddSession_Multiple_Next_Calls__Inside_Execute(t *testing.T) {
+	s := newSessionTest()
+
+	var calls []string
+
+	fn1 := &callMock{
+		fn: func() {
+			calls = append(calls, "fn1")
+		},
+	}
+
+	fn2 := &callMock{
+		fn: func() {
+			calls = append(calls, "fn2")
+		},
+	}
+
+	fn3 := &callMock{
+		fn: func() {
+			calls = append(calls, "fn3")
+		},
+	}
+
+	fn4 := &callMock{
+		fn: func() {
+			calls = append(calls, "fn4")
+			s.sess.AddNextCall(fn1.get())
+			s.sess.AddNextCall(fn2.get())
+		},
+	}
+	fn5 := &callMock{
+		fn: func() {
+			calls = append(calls, "fn5")
+			s.sess.AddNextCall(fn3.get())
+		},
+	}
+
+	s.sess.AddNextCall(fn4.get())
+	s.sess.AddNextCall(fn5.get())
+
+	assert.Equal(t, 0, fn1.count)
+	assert.Equal(t, 0, fn4.count)
+
+	s.sess.Execute()
+
+	assert.Equal(t, 1, fn1.count)
+	assert.Equal(t, 1, fn2.count)
+	assert.Equal(t, 1, fn3.count)
+	assert.Equal(t, 1, fn4.count)
+	assert.Equal(t, 1, fn5.count)
+
+	assert.Equal(t, []string{"fn4", "fn5", "fn1", "fn2", "fn3"}, calls)
+}
+
 func TestSessionAddNextCall_Call_Chain(t *testing.T) {
 	s := newSessionTest()
 

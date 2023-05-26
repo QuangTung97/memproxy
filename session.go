@@ -144,7 +144,7 @@ func (s *sessionImpl) GetLower() Session {
 func (s *sessionImpl) executeNextCalls() {
 	for len(s.nextCalls) > 0 {
 		nextCalls := s.nextCalls
-		s.nextCalls = s.nextCalls[:0]
+		s.nextCalls = nil
 		for _, call := range nextCalls {
 			call()
 		}

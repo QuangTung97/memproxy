@@ -92,4 +92,4 @@ More detail in:
 * https://github.com/memcached/memcached/wiki/MetaCommands
 * https://github.com/memcached/memcached/blob/master/doc/protocol.txt
 
-### Next: [Preventing Thundering Herd](thundering-herd.md)
+#### Next: [Preventing Thundering Herd](thundering-herd.md)
