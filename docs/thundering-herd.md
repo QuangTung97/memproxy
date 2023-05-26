@@ -36,3 +36,6 @@ In this library, after receiving the ``Z`` flag, the client will sleep for speci
 And the behaviour after all the retries in ``item.WithSleepDurations`` can be configured by
 ``item.WithEnableErrorOnExceedRetryLimit``, ``enable = true`` will return error, ``enable = false``
 will continue get from the backing store and set back to the memcached server.
+
+#### Previous: [Consistency between Memcached and Database](consistency.md)
+#### Next: [Efficient Batching](efficient-batching.md)
