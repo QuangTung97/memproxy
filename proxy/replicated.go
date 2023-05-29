@@ -57,6 +57,13 @@ func WithMinPercentage(percentage float64) ReplicatedRouteOption {
 	}
 }
 
+// WithMemoryScoringFunc changes the weight function for replication load-balancing
+func WithMemoryScoringFunc(memScoreFunc func(mem float64) float64) ReplicatedRouteOption {
+	return func(conf *replicatedRouteConfig) {
+		conf.memScore = memScoreFunc
+	}
+}
+
 // NewReplicatedRoute ...
 func NewReplicatedRoute(
 	servers []ServerID,

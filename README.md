@@ -22,6 +22,7 @@ This library helps to utilize memcached in a consistent and efficient way.
 2. [Consistency between Memcached and Database](docs/consistency.md)
 3. [Preventing Thundering Herd](docs/thundering-herd.md)
 4. [Efficient Batching](docs/efficient-batching.md)
+5. [Memcache Replication & Memory-Weighted Load Balancing](docs/replication.md)
 
 ## Usage
 

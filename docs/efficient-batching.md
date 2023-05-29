@@ -238,3 +238,4 @@ The actual implement will be more complicated because of many options and
 have to deal with sleeping for Thundering Herd Protection. But the main idea remains the same.
 
 #### Previous: [Preventing Thundering Herd](thundering-herd.md)
+#### Next: [Memcache Replication & Memory-Weighted Load Balancing](replication.md)
