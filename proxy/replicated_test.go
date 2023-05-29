@@ -3,6 +3,7 @@ package proxy
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"math"
 	"testing"
 )
 
@@ -228,6 +229,30 @@ func TestReplicatedRoute(t *testing.T) {
 		assert.Equal(t, true, r.selector.HasNextAvailableServer())
 
 		assert.Equal(t, []ServerID{serverID1, serverID2}, r.selector.SelectForDelete(""))
+	})
+
+	t.Run("with-mem-non-zero--using-another-scoring-function", func(t *testing.T) {
+		r := newReplicatedRouteTest(
+			WithMemoryScoringFunc(func(mem float64) float64 {
+				return math.Sqrt(mem)
+			}),
+		)
+
+		r.stubGetMem(
+			9, 16,
+			9, 16,
+		)
+		// 3, 4 => 3 / 7 = 0.42857142857
+
+		r.stubRand(uint64(float64(RandomMaxValues) * 0.42))
+		assert.Equal(t, serverID1, r.selector.SelectServer(""))
+		assert.Equal(t, true, r.selector.HasNextAvailableServer())
+
+		r.selector.Reset()
+
+		r.stubRand(uint64(float64(RandomMaxValues) * 0.43))
+		assert.Equal(t, serverID2, r.selector.SelectServer(""))
+		assert.Equal(t, true, r.selector.HasNextAvailableServer())
 	})
 }
 
