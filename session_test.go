@@ -650,3 +650,28 @@ func TestSession_Lower_Priority__Delayed_Call__Sleep_Again_In_Lower_Session(t *t
 	}, s.sleepCalls)
 	assert.Equal(t, 1, fn1.count)
 }
+
+func TestSession_Lower_Priority_AddNextCall__Run_On_Lowest_Priority(t *testing.T) {
+	s := newSessionTest()
+
+	var calls []int
+
+	newCall := func(n int) *callMock {
+		return &callMock{
+			fn: func() {
+				calls = append(calls, n)
+			},
+		}
+	}
+
+	fn1 := newCall(11)
+
+	s.sess.AddNextCall(fn1.get())
+
+	lower1 := s.sess.GetLower()
+	lower2 := lower1.GetLower()
+
+	lower2.Execute()
+
+	assert.Equal(t, []int{11}, calls)
+}
