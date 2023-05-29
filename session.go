@@ -53,7 +53,9 @@ func (p *sessionProviderImpl) New() Session {
 	return newSession(p, nil)
 }
 
-func newSession(provider *sessionProviderImpl, higher *sessionImpl) *sessionImpl {
+func newSession(
+	provider *sessionProviderImpl, higher *sessionImpl,
+) *sessionImpl {
 	s := &sessionImpl{
 		provider: provider,
 		lower:    nil,
@@ -61,6 +63,7 @@ func newSession(provider *sessionProviderImpl, higher *sessionImpl) *sessionImpl
 	}
 	if higher != nil {
 		higher.lower = s
+		s.isDirty = higher.isDirty
 	}
 	return s
 }
@@ -84,7 +87,7 @@ type delayedCall struct {
 var _ Session = &sessionImpl{}
 
 func (s *sessionImpl) isSessionDirty() bool {
-	return s.isDirty || len(s.nextCalls) > 0 || s.heap.size() > 0
+	return s.isDirty
 }
 
 func setDirtyRecursive(s *sessionImpl) {
@@ -103,6 +106,9 @@ func setDirtyRecursive(s *sessionImpl) {
 // AddNextCall ...
 func (s *sessionImpl) AddNextCall(fn func()) {
 	setDirtyRecursive(s)
+	if s.nextCalls == nil {
+		s.nextCalls = make([]func(), 0, 32)
+	}
 	s.nextCalls = append(s.nextCalls, fn)
 }
 
