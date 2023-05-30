@@ -119,8 +119,10 @@ type multiGetFillerConfig struct {
 type MultiGetFillerOption func(conf *multiGetFillerConfig)
 
 // WithMultiGetEnableDeleteOnNotFound when enable = true will delete the empty
-// key-value (used for lease get) from memcached server
-// when the multiGetFunc not returning the corresponding values for the keys
+// key-value (used for lease get) from memcached server,
+// when the multiGetFunc NOT returning the corresponding values for the keys.
+// Otherwise, the empty value (zero value) will be set to the memcached server.
+// By default, enable = false.
 func WithMultiGetEnableDeleteOnNotFound(enable bool) MultiGetFillerOption {
 	return func(conf *multiGetFillerConfig) {
 		conf.deleteOnNotFound = enable
@@ -182,7 +184,10 @@ func NewMultiGetFiller[T Value, K Key](
 	}
 }
 
-// New ...
+// New creates an item.Item.
+// Param: unmarshaler is for unmarshalling the Value type.
+// Param: filler is for fetching data from the backing source (e.g. Database),
+// and can use the function NewMultiGetFiller() for simple multi get from database
 func New[T Value, K Key](
 	pipeline memproxy.Pipeline,
 	unmarshaler Unmarshaler[T],
