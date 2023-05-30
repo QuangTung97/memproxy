@@ -26,4 +26,5 @@ This library helps to utilize memcached in a consistent and efficient way.
 
 ## Usage
 
-Check out the [Example](examples/failover/main.go)
+* [Using a single memcached server and source from the database](examples/simple/main.go)
+* [Using multiple memcached servers](examples/failover/main.go)
