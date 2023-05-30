@@ -28,15 +28,18 @@ CREATE TABLE customer (
 )
 `
 
+// Customer ...
 type Customer struct {
 	ID       int64  `db:"id" json:"id"`
 	Username string `db:"username" json:"username"`
 }
 
+// Marshal ...
 func (c Customer) Marshal() ([]byte, error) {
 	return json.Marshal(c)
 }
 
+// GetKey ...
 func (c Customer) GetKey() CustomerKey {
 	return CustomerKey{ID: c.ID}
 }
@@ -47,6 +50,7 @@ func unmarshalCustomer(data []byte) (Customer, error) {
 	return c, err
 }
 
+// CustomerKey ...
 type CustomerKey struct {
 	ID int64
 }
@@ -91,7 +95,7 @@ func main() {
 	}
 	mc := memproxy.NewPlainMemcache(client)
 
-	db := sqlx.MustConnect("mysql", "root:1@tcp(localhost:3306)/bench?")
+	db := sqlx.MustConnect("mysql", "root:1@tcp(localhost:3306)/memtest?")
 
 	db.MustExec(dropTableSQL)
 	db.MustExec(createTableSQL)
@@ -131,9 +135,9 @@ VALUES (11, "user01"), (12, "user02")
 	// Can check using: telnet localhost 11211
 	// get customers:11
 
-	//=============================================
+	// =============================================
 	// Do Get Again
-	//=============================================
+	// =============================================
 	pipe = mc.Pipeline(context.Background())
 	customerItem = svc.newCustomerItem(pipe)
 
