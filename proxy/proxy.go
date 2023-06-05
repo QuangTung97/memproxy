@@ -187,6 +187,54 @@ func (p *Pipeline) setKeyForLeaseSet(
 	}
 }
 
+type leaseGetState struct {
+	pipe     *Pipeline
+	serverID ServerID
+	key      string
+	options  memproxy.LeaseGetOptions
+
+	fn func() (memproxy.LeaseGetResponse, error)
+
+	resp memproxy.LeaseGetResponse
+	err  error
+}
+
+func (s *leaseGetState) retryOnOtherNode() {
+	s.pipe.doExecuteForAllServers()
+	s.resp, s.err = s.fn()
+	if s.err == nil {
+		s.pipe.setKeyForLeaseSet(s.key, s.resp, s.serverID)
+	}
+}
+
+func (s *leaseGetState) nextFunc() {
+	s.pipe.doExecuteForAllServers()
+	s.resp, s.err = s.fn()
+
+	if s.err != nil {
+		s.pipe.selector.SetFailedServer(s.serverID)
+		if !s.pipe.selector.HasNextAvailableServer() {
+			return
+		}
+
+		s.serverID = s.pipe.selector.SelectServer(s.key)
+
+		pipe := s.pipe.getRoutePipeline(s.serverID)
+		s.fn = pipe.LeaseGet(s.key, s.options)
+
+		s.pipe.sess.AddNextCall(s.retryOnOtherNode)
+		return
+	}
+
+	s.pipe.setKeyForLeaseSet(s.key, s.resp, s.serverID)
+}
+
+func (s *leaseGetState) returnFunc() (memproxy.LeaseGetResponse, error) {
+	s.pipe.sess.Execute()
+	s.pipe.selector.Reset()
+	return s.resp, s.err
+}
+
 // LeaseGet ...
 func (p *Pipeline) LeaseGet(
 	key string, options memproxy.LeaseGetOptions,
@@ -196,42 +244,17 @@ func (p *Pipeline) LeaseGet(
 	pipe := p.getRoutePipeline(serverID)
 	fn := pipe.LeaseGet(key, options)
 
-	var resp memproxy.LeaseGetResponse
-	var err error
+	state := &leaseGetState{
+		pipe:     p,
+		serverID: serverID,
+		key:      key,
+		options:  options,
 
-	p.sess.AddNextCall(func() {
-		p.doExecuteForAllServers()
-		resp, err = fn()
-
-		if err != nil {
-			p.selector.SetFailedServer(serverID)
-			if !p.selector.HasNextAvailableServer() {
-				return
-			}
-
-			serverID = p.selector.SelectServer(key)
-
-			pipe := p.getRoutePipeline(serverID)
-			fn = pipe.LeaseGet(key, options)
-
-			p.sess.AddNextCall(func() {
-				p.doExecuteForAllServers()
-				resp, err = fn()
-				if err == nil {
-					p.setKeyForLeaseSet(key, resp, serverID)
-				}
-			})
-			return
-		}
-
-		p.setKeyForLeaseSet(key, resp, serverID)
-	})
-
-	return func() (memproxy.LeaseGetResponse, error) {
-		p.sess.Execute()
-		p.selector.Reset()
-		return resp, err
+		fn: fn,
 	}
+
+	p.sess.AddNextCall(state.nextFunc)
+	return state.returnFunc
 }
 
 // LeaseSet ...
