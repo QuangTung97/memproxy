@@ -225,151 +225,155 @@ type getResultType[T any] struct {
 	err  error
 }
 
-func (i *Item[T, K]) handleLeaseGranted(
-	ctx context.Context, key K,
-	setError func(err error),
-	setResponse func(resp T),
-	keyStr string, cas uint64,
-) {
-	fillFn := i.filler(ctx, key)
-	i.sess.AddNextCall(func() {
+func (s *getState[T, K]) handleLeaseGranted(cas uint64) {
+	fillFn := s.it.filler(s.ctx, s.key)
+	s.it.sess.AddNextCall(func() {
 		fillResp, err := fillFn()
 
 		if err == ErrNotFound {
-			setResponse(fillResp)
-			i.pipeline.Delete(keyStr, memproxy.DeleteOptions{})
+			s.setResponse(fillResp)
+			s.it.pipeline.Delete(s.keyStr, memproxy.DeleteOptions{})
 			return
 		}
 
 		if err != nil {
-			setError(err)
+			s.setResponseError(err)
 			return
 		}
 
 		data, err := fillResp.Marshal()
 		if err != nil {
-			setError(err)
+			s.setResponseError(err)
 			return
 		}
-		setResponse(fillResp)
+		s.setResponse(fillResp)
 
 		if cas > 0 {
-			_ = i.pipeline.LeaseSet(keyStr, data, cas, memproxy.LeaseSetOptions{})
-			i.sess.AddNextCall(i.pipeline.Execute)
+			_ = s.it.pipeline.LeaseSet(s.keyStr, data, cas, memproxy.LeaseSetOptions{})
+			s.it.sess.AddNextCall(s.it.pipeline.Execute)
 		}
 	})
 }
 
-// Get ...
-//
-//revive:disable-next-line:cognitive-complexity
+type getState[T Value, K Key] struct {
+	ctx context.Context
+	key K
+
+	it *Item[T, K]
+
+	retryCount   int
+	keyStr       string
+	leaseGetFunc func() (memproxy.LeaseGetResponse, error)
+}
+
+func (s *getState[T, K]) setResponseError(err error) {
+	s.it.options.errorLogger(err)
+	s.it.getKeys[s.key] = getResultType[T]{
+		err: err,
+	}
+}
+
+func (s *getState[T, K]) setResponse(resp T) {
+	s.it.getKeys[s.key] = getResultType[T]{
+		resp: resp,
+	}
+}
+
+func (s *getState[T, K]) doFillFunc(cas uint64) {
+	s.it.stats.FillCount++
+	s.handleLeaseGranted(cas)
+}
+
+func (s *getState[T, K]) handleCacheError(err error) {
+	s.it.stats.LeaseGetError++
+	if s.it.options.fillingOnCacheError {
+		s.it.options.errorLogger(err)
+		s.doFillFunc(0)
+	} else {
+		s.setResponseError(err)
+	}
+}
+
+func (s *getState[T, K]) nextFunc() {
+	leaseGetResp, err := s.leaseGetFunc()
+	if err != nil {
+		s.handleCacheError(err)
+		return
+	}
+
+	if leaseGetResp.Status == memproxy.LeaseGetStatusFound {
+		s.it.stats.HitCount++
+		resp, err := s.it.unmarshaler(leaseGetResp.Data)
+		if err != nil {
+			s.setResponseError(err)
+			return
+		}
+		s.setResponse(resp)
+		return
+	}
+
+	if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseGranted {
+		s.doFillFunc(leaseGetResp.CAS)
+		return
+	}
+
+	if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseRejected {
+		s.it.increaseRejectedCount(s.retryCount)
+
+		if s.retryCount < len(s.it.options.sleepDurations) {
+			s.it.sess.AddDelayedCall(s.it.options.sleepDurations[s.retryCount], func() {
+				s.retryCount++
+
+				s.leaseGetFunc = s.it.pipeline.LeaseGet(s.keyStr, memproxy.LeaseGetOptions{})
+				s.it.sess.AddNextCall(s.nextFunc)
+			})
+			return
+		}
+
+		if !s.it.options.errorOnRetryLimit {
+			s.doFillFunc(leaseGetResp.CAS)
+			return
+		}
+
+		s.setResponseError(ErrExceededRejectRetryLimit)
+		return
+	}
+
+	s.handleCacheError(ErrInvalidLeaseGetStatus)
+}
+
+func (s *getState[T, K]) returnFunc() (T, error) {
+	s.it.sess.Execute()
+
+	result := s.it.getKeys[s.key]
+	return result.resp, result.err
+}
+
+// Get a single item with key
 func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 	keyStr := key.String()
 
-	returnFn := func() (T, error) {
-		i.sess.Execute()
+	state := &getState[T, K]{
+		ctx: ctx,
+		key: key,
 
-		result := i.getKeys[key]
-		return result.resp, result.err
+		it: i,
+
+		retryCount: 0,
+		keyStr:     keyStr,
 	}
 
 	_, existed := i.getKeys[key]
 	if existed {
-		return returnFn
+		return state.returnFunc
 	}
 	i.getKeys[key] = getResultType[T]{}
 
-	retryCount := 0
+	state.leaseGetFunc = i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
 
-	leaseGetFn := i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
+	i.sess.AddNextCall(state.nextFunc)
 
-	var nextFn func()
-
-	setResponseError := func(err error) {
-		i.options.errorLogger(err)
-		i.getKeys[key] = getResultType[T]{
-			err: err,
-		}
-	}
-
-	setResponse := func(resp T) {
-		i.getKeys[key] = getResultType[T]{
-			resp: resp,
-		}
-	}
-
-	nextFn = func() {
-		leaseGetResp, err := leaseGetFn()
-
-		doFillFunc := func() {
-			i.stats.FillCount++
-			i.handleLeaseGranted(
-				ctx, key,
-				setResponseError, setResponse,
-				keyStr, leaseGetResp.CAS,
-			)
-		}
-
-		handleCacheError := func(err error) {
-			i.stats.LeaseGetError++
-			if i.options.fillingOnCacheError {
-				leaseGetResp = memproxy.LeaseGetResponse{}
-				i.options.errorLogger(err)
-				doFillFunc()
-			} else {
-				setResponseError(err)
-			}
-		}
-
-		if err != nil {
-			handleCacheError(err)
-			return
-		}
-
-		if leaseGetResp.Status == memproxy.LeaseGetStatusFound {
-			i.stats.HitCount++
-			resp, err := i.unmarshaler(leaseGetResp.Data)
-			if err != nil {
-				setResponseError(err)
-				return
-			}
-			setResponse(resp)
-			return
-		}
-
-		if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseGranted {
-			doFillFunc()
-			return
-		}
-
-		if leaseGetResp.Status == memproxy.LeaseGetStatusLeaseRejected {
-			i.increaseRejectedCount(retryCount)
-
-			if retryCount < len(i.options.sleepDurations) {
-				i.sess.AddDelayedCall(i.options.sleepDurations[retryCount], func() {
-					retryCount++
-
-					leaseGetFn = i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
-					i.sess.AddNextCall(nextFn)
-				})
-				return
-			}
-
-			if !i.options.errorOnRetryLimit {
-				doFillFunc()
-				return
-			}
-
-			setResponseError(ErrExceededRejectRetryLimit)
-			return
-		}
-
-		handleCacheError(ErrInvalidLeaseGetStatus)
-	}
-
-	i.sess.AddNextCall(nextFn)
-
-	return returnFn
+	return state.returnFunc
 }
 
 func (i *Item[T, K]) increaseRejectedCount(retryCount int) {
