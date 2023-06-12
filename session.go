@@ -86,17 +86,10 @@ type delayedCall struct {
 
 var _ Session = &sessionImpl{}
 
-func (s *sessionImpl) isSessionDirty() bool {
-	return s.isDirty
-}
-
 func setDirtyRecursive(s *sessionImpl) {
-	for {
+	for !s.isDirty {
 		s.isDirty = true
 		if s.lower == nil {
-			return
-		}
-		if s.lower.isSessionDirty() {
 			return
 		}
 		s = s.lower
@@ -123,7 +116,11 @@ func (s *sessionImpl) AddDelayedCall(d time.Duration, fn func()) {
 
 // Execute ...
 func (s *sessionImpl) Execute() {
-	if s.higher != nil && s.higher.isDirty {
+	if !s.isDirty {
+		return
+	}
+
+	if s.higher != nil {
 		s.higher.Execute()
 	}
 
