@@ -105,7 +105,7 @@ var ErrExceededRejectRetryLimit = errors.New("item: exceeded lease rejected retr
 // ErrInvalidLeaseGetStatus ...
 var ErrInvalidLeaseGetStatus = errors.New("item: invalid lease get response status")
 
-type multiGetState[T Value, K Key] struct {
+type multiGetState[T any, K comparable] struct {
 	keys   []K
 	result map[K]T
 	err    error
@@ -132,7 +132,7 @@ func WithMultiGetEnableDeleteOnNotFound(enable bool) MultiGetFillerOption {
 // NewMultiGetFiller ...
 //
 //revive:disable-next-line:cognitive-complexity
-func NewMultiGetFiller[T Value, K Key](
+func NewMultiGetFiller[T any, K comparable](
 	multiGetFunc func(ctx context.Context, keys []K) ([]T, error),
 	getKey func(v T) K,
 	options ...MultiGetFillerOption,
