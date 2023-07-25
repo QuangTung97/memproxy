@@ -8,9 +8,10 @@ import (
 // Memcache represents a generic Memcache interface
 // implementations of this interface must be thread safe
 type Memcache interface {
+	// Pipeline creates a Pipeline, a NON thread safe object
 	Pipeline(ctx context.Context, options ...PipelineOption) Pipeline
 
-	// Close ...
+	// Close shutdowns memcache client
 	Close() error
 }
 

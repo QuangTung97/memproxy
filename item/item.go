@@ -303,6 +303,8 @@ func (s *getState[T, K]) nextFunc() {
 
 	if leaseGetResp.Status == memproxy.LeaseGetStatusFound {
 		s.it.stats.HitCount++
+		s.it.stats.TotalBytesRecv += uint64(len(leaseGetResp.Data))
+
 		resp, err := s.it.unmarshaler(leaseGetResp.Data)
 		if err != nil {
 			s.setResponseError(err)
@@ -410,6 +412,8 @@ type Stats struct {
 	SecondRejectedCount uint64
 	ThirdRejectedCount  uint64
 	TotalRejectedCount  uint64
+
+	TotalBytesRecv uint64
 }
 
 // GetStats ...

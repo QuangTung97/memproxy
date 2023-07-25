@@ -271,6 +271,7 @@ func TestItem(t *testing.T) {
 
 		stats := i.item.GetStats()
 		assert.Equal(t, uint64(1), stats.HitCount)
+		assert.Greater(t, stats.TotalBytesRecv, uint64(40))
 	})
 
 	t.Run("lease-get-with-error-returns-error", func(t *testing.T) {
@@ -335,6 +336,7 @@ func TestItem(t *testing.T) {
 		stats := i.item.GetStats()
 		assert.Equal(t, uint64(0), stats.HitCount)
 		assert.Equal(t, uint64(1), stats.FillCount)
+		assert.Equal(t, uint64(0), stats.TotalBytesRecv)
 	})
 
 	t.Run("lease-get-lease-granted--fill-with-error-not-found", func(t *testing.T) {
@@ -443,6 +445,7 @@ func TestItem__LeaseRejected__Do_Sleep(t *testing.T) {
 		assert.Equal(t, uint64(1), stats.FirstRejectedCount)
 		assert.Equal(t, uint64(0), stats.SecondRejectedCount)
 		assert.Equal(t, uint64(1), stats.TotalRejectedCount)
+		assert.Greater(t, stats.TotalBytesRecv, uint64(40))
 	})
 
 	t.Run("lease-rejected-multi-times", func(t *testing.T) {
@@ -857,6 +860,7 @@ func TestItem__Multi(t *testing.T) {
 		assert.Equal(t, uint64(0), stats.HitCount)
 		assert.Equal(t, uint64(2), stats.FillCount)
 		assert.Equal(t, uint64(0), stats.TotalRejectedCount)
+		assert.Equal(t, uint64(0), stats.TotalBytesRecv)
 	})
 
 	t.Run("get-multi-same-key", func(t *testing.T) {
@@ -913,6 +917,69 @@ func TestItem__Multi(t *testing.T) {
 		assert.Equal(t, uint64(0), stats.HitCount)
 		assert.Equal(t, uint64(1), stats.FillCount)
 		assert.Equal(t, uint64(0), stats.TotalRejectedCount)
+	})
+
+	t.Run("get-multi-different-keys--found", func(t *testing.T) {
+		i := newItemTest()
+
+		user1 := userValue{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+			Age:    88,
+		}
+
+		user2 := userValue{
+			Tenant: "TENANT02",
+			Name:   "USER02",
+			Age:    89,
+		}
+
+		i.stubLeaseGetMulti(
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusFound,
+				CAS:    1101,
+				Data:   mustMarshalUser(user1),
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusFound,
+				CAS:    1102,
+				Data:   mustMarshalUser(user2),
+			},
+		)
+
+		fn1 := i.item.Get(newContext(), user1.GetKey())
+		fn2 := i.item.Get(newContext(), user2.GetKey())
+
+		result, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user1, result)
+
+		result, err = fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user2, result)
+
+		calls := i.pipe.LeaseGetCalls()
+
+		assert.Equal(t, 2, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+		assert.Equal(t, "TENANT02:USER02", calls[1].Key)
+
+		assert.Equal(t, []userKey(nil), i.fillKeys)
+
+		assert.Equal(t, []string{
+			leaseGetAction(user1.GetKey().String()),
+			leaseGetAction(user2.GetKey().String()),
+
+			leaseGetFuncAction(user1.GetKey().String()),
+			leaseGetFuncAction(user2.GetKey().String()),
+		}, i.actions)
+
+		// Check Stats
+		stats := i.item.GetStats()
+		assert.Equal(t, uint64(2), stats.HitCount)
+		assert.Equal(t, uint64(0), stats.FillCount)
+		assert.Equal(t, uint64(0), stats.TotalRejectedCount)
+		assert.Greater(t, stats.TotalBytesRecv, uint64(90))
 	})
 }
 
