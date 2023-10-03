@@ -1,8 +1,10 @@
 package mmap
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"math"
 	"strconv"
 	"strings"
@@ -55,16 +57,68 @@ type Bucket[T Value] struct {
 	Values []T
 }
 
+func putLength(buf *bytes.Buffer, length int) {
+	var lenBytes [binary.MaxVarintLen64]byte
+
+	n := binary.PutUvarint(lenBytes[:], uint64(length))
+	_, _ = buf.Write(lenBytes[:n])
+}
+
 // Marshal ...
 func (b Bucket[T]) Marshal() ([]byte, error) {
-	return nil, nil
+	var buf bytes.Buffer
+
+	putLength(&buf, len(b.Values))
+
+	for _, v := range b.Values {
+		data, err := v.Marshal()
+		if err != nil {
+			return nil, err
+		}
+
+		putLength(&buf, len(data))
+		_, _ = buf.Write(data)
+	}
+
+	return buf.Bytes(), nil
 }
 
 // NewBucketUnmarshaler ...
 func NewBucketUnmarshaler[T Value](
 	unmarshaler item.Unmarshaler[T],
 ) func(data []byte) (Bucket[T], error) {
+
 	return func(data []byte) (Bucket[T], error) {
-		return Bucket[T]{}, nil
+		numValues, n := binary.Uvarint(data)
+		if n <= 0 {
+			return Bucket[T]{}, errors.New("mmap bucket: invalid number of values")
+		}
+		data = data[n:]
+
+		values := make([]T, 0, numValues)
+
+		for i := uint64(0); i < numValues; i++ {
+			numBytes, n := binary.Uvarint(data)
+			if n <= 0 {
+				return Bucket[T]{}, errors.New("mmap bucket: invalid length number of data")
+			}
+			data = data[n:]
+
+			if len(data) < int(numBytes) {
+				return Bucket[T]{}, errors.New("mmap bucket: invalid data")
+			}
+
+			value, err := unmarshaler(data[:numBytes])
+			if err != nil {
+				return Bucket[T]{}, err
+			}
+			values = append(values, value)
+
+			data = data[numBytes:]
+		}
+
+		return Bucket[T]{
+			Values: values,
+		}, nil
 	}
 }
