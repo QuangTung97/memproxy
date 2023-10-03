@@ -49,7 +49,13 @@ func (k BucketKey[R]) String() string {
 
 // GetHashRange ...
 func (k BucketKey[R]) GetHashRange() HashRange {
-	return HashRange{}
+	mask := uint64(math.MaxUint64) << (64 - k.SizeLog)
+
+	begin := k.Hash & mask
+	return HashRange{
+		Begin: begin,
+		End:   begin | ^mask,
+	}
 }
 
 // Bucket ...

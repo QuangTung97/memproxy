@@ -20,7 +20,6 @@ func (k testRootKey) String() string {
 func newHash(prefix uint64, length int) uint64 {
 	size := length * 8
 	return prefix << (64 - size)
-
 }
 
 func TestNewHash(t *testing.T) {
@@ -236,4 +235,51 @@ func TestBucket_Marshal_With_Error(t *testing.T) {
 	}
 	_, err := b.Marshal()
 	assert.Equal(t, errors.New("marshal error"), err)
+}
+
+func TestBucketKey_GetHashRange(t *testing.T) {
+	t.Run("normal", func(t *testing.T) {
+		k := BucketKey[testRootKey]{
+			RootKey: testRootKey{
+				prefix: "hello",
+			},
+			SizeLog: 16,
+			Hash:    newHash(0x1234_56, 3),
+		}
+
+		assert.Equal(t, HashRange{
+			Begin: newHash(0x1234, 2),
+			End:   0x1234_ffff_ffff_ffff,
+		}, k.GetHashRange())
+	})
+
+	t.Run("zero size log", func(t *testing.T) {
+		k := BucketKey[testRootKey]{
+			RootKey: testRootKey{
+				prefix: "hello",
+			},
+			SizeLog: 0,
+			Hash:    newHash(0x1234_56, 3),
+		}
+
+		assert.Equal(t, HashRange{
+			Begin: 0,
+			End:   0xffff_ffff_ffff_ffff,
+		}, k.GetHashRange())
+	})
+
+	t.Run("size log middle", func(t *testing.T) {
+		k := BucketKey[testRootKey]{
+			RootKey: testRootKey{
+				prefix: "hello",
+			},
+			SizeLog: 7,
+			Hash:    newHash(0x1734_56, 3),
+		}
+
+		assert.Equal(t, HashRange{
+			Begin: 0x1600_0000_0000_0000,
+			End:   0x17ff_ffff_ffff_ffff,
+		}, k.GetHashRange())
+	})
 }
