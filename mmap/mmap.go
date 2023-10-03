@@ -77,6 +77,9 @@ type Option[T any] struct {
 	Data  T
 }
 
+// Get from Map
+// The elemCount need *NOT* be exact, but *MUST* be monotonically increasing
+// Otherwise Map can return incorrect values
 func (m *Map[T, R, K]) Get(
 	ctx context.Context,
 	elemCount uint64,
@@ -84,7 +87,7 @@ func (m *Map[T, R, K]) Get(
 ) func() (Option[T], error) {
 	fn := m.item.Get(ctx, BucketKey[R]{
 		RootKey: rootKey,
-		SizeLog: uint8(elemCount),
+		SizeLog: uint8(elemCount), // TODO
 		Hash:    key.Hash(),
 		Sep:     ":",
 	})
