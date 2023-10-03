@@ -1,7 +1,11 @@
 package mmap
 
 import (
-	"fmt"
+	"encoding/binary"
+	"encoding/hex"
+	"math"
+	"strconv"
+	"strings"
 
 	"github.com/QuangTung97/memproxy/item"
 )
@@ -16,7 +20,29 @@ type BucketKey[R RootKey] struct {
 
 // String ...
 func (k BucketKey[R]) String() string {
-	return fmt.Sprintf("%s%s%d%s%d", k.RootKey.String(), k.Sep, k.SizeLog, k.Sep, k.Hash)
+	var buf strings.Builder
+
+	buf.WriteString(k.RootKey.String())
+	buf.WriteString(k.Sep)
+	buf.WriteString(strconv.FormatInt(int64(k.SizeLog), 10))
+	buf.WriteString(k.Sep)
+
+	hash := k.Hash & (math.MaxUint64 << (64 - k.SizeLog))
+
+	var data [8]byte
+	binary.BigEndian.PutUint64(data[:], hash)
+
+	numBytes := (k.SizeLog + 7) >> 3
+	hexStr := hex.EncodeToString(data[:numBytes])
+
+	numDigits := (k.SizeLog + 3) >> 2
+	if numDigits&0b1 != 0 {
+		hexStr = hexStr[:len(hexStr)-1]
+	}
+
+	buf.WriteString(hexStr)
+
+	return buf.String()
 }
 
 // GetHashRange ...
