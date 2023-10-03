@@ -2,6 +2,8 @@ package mmap
 
 import (
 	"context"
+	"math"
+	"math/bits"
 
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/item"
@@ -10,6 +12,7 @@ import (
 // RootKey constraints
 type RootKey interface {
 	item.Key
+	AvgBucketSizeLog() uint8
 }
 
 // Key child key constraint
@@ -77,6 +80,54 @@ type Option[T any] struct {
 	Data  T
 }
 
+func computeSizeLog(
+	avgBucketSizeLog uint8,
+	elemCount uint64,
+	hash uint64,
+) uint8 {
+	avgBucketSize := uint64(1) << avgBucketSizeLog
+	if elemCount <= avgBucketSize {
+		return 0
+	}
+
+	sizeLog := uint8(bits.Len64(elemCount-1)) - avgBucketSizeLog
+
+	prevSizeLog := uint64(1) << (avgBucketSizeLog + sizeLog - 1)
+
+	boundValue := (elemCount - 1 - prevSizeLog) >> (avgBucketSizeLog - 1)
+	boundEnd := boundValue<<(64-sizeLog) | (math.MaxUint64 >> sizeLog)
+
+	if hash <= boundEnd {
+		return sizeLog
+	}
+	return sizeLog - 1
+}
+
+// ComputeBucketKey ...
+func ComputeBucketKey[R RootKey, K Key](
+	elemCount uint64,
+	rootKey R, key K,
+	separator string,
+) BucketKey[R] {
+	hash := key.Hash()
+
+	return BucketKey[R]{
+		RootKey: rootKey,
+		SizeLog: computeSizeLog(rootKey.AvgBucketSizeLog(), elemCount, hash),
+		Hash:    hash,
+		Sep:     separator,
+	}
+}
+
+// ComputeBucketKeyString ...
+func ComputeBucketKeyString[R RootKey, K Key](
+	elemCount uint64,
+	rootKey R, key K,
+	separator string,
+) string {
+	return ComputeBucketKey(elemCount, rootKey, key, separator).String()
+}
+
 // Get from Map
 // The elemCount need *NOT* be exact, but *MUST* be monotonically increasing
 // Otherwise Map can return incorrect values
@@ -85,12 +136,9 @@ func (m *Map[T, R, K]) Get(
 	elemCount uint64,
 	rootKey R, key K,
 ) func() (Option[T], error) {
-	fn := m.item.Get(ctx, BucketKey[R]{
-		RootKey: rootKey,
-		SizeLog: uint8(elemCount), // TODO
-		Hash:    key.Hash(),
-		Sep:     ":",
-	})
+	bucketKey := ComputeBucketKey(elemCount, rootKey, key, ":")
+
+	fn := m.item.Get(ctx, bucketKey)
 
 	return func() (Option[T], error) {
 		bucket, err := fn()

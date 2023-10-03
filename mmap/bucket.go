@@ -24,10 +24,10 @@ type BucketKey[R RootKey] struct {
 func (k BucketKey[R]) String() string {
 	var buf strings.Builder
 
-	buf.WriteString(k.RootKey.String())
-	buf.WriteString(k.Sep)
-	buf.WriteString(strconv.FormatInt(int64(k.SizeLog), 10))
-	buf.WriteString(k.Sep)
+	_, _ = buf.WriteString(k.RootKey.String())
+	_, _ = buf.WriteString(k.Sep)
+	_, _ = buf.WriteString(strconv.FormatInt(int64(k.SizeLog), 10))
+	_, _ = buf.WriteString(k.Sep)
 
 	hash := k.Hash & (math.MaxUint64 << (64 - k.SizeLog))
 
@@ -42,7 +42,7 @@ func (k BucketKey[R]) String() string {
 		hexStr = hexStr[:len(hexStr)-1]
 	}
 
-	buf.WriteString(hexStr)
+	_, _ = buf.WriteString(hexStr)
 
 	return buf.String()
 }
@@ -93,7 +93,6 @@ func (b Bucket[T]) Marshal() ([]byte, error) {
 func NewBucketUnmarshaler[T Value](
 	unmarshaler item.Unmarshaler[T],
 ) func(data []byte) (Bucket[T], error) {
-
 	return func(data []byte) (Bucket[T], error) {
 		numValues, n := binary.Uvarint(data)
 		if n <= 0 {

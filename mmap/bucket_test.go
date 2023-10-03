@@ -16,6 +16,10 @@ func (k testRootKey) String() string {
 	return k.prefix
 }
 
+func (testRootKey) AvgBucketSizeLog() uint8 {
+	return 2
+}
+
 // length in bytes
 func newHash(prefix uint64, length int) uint64 {
 	size := length * 8
@@ -223,7 +227,7 @@ func TestNewBucketUnmarshaler_WithInnerError(t *testing.T) {
 
 type errorString string
 
-func (s errorString) Marshal() ([]byte, error) {
+func (errorString) Marshal() ([]byte, error) {
 	return nil, errors.New("marshal error")
 }
 
