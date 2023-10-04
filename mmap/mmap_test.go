@@ -42,6 +42,12 @@ type stockLocation struct {
 	Quantity float64 `json:"quantity"`
 }
 
+func (s stockLocation) getRootKey() stockLocationRootKey {
+	return stockLocationRootKey{
+		sku: s.Sku,
+	}
+}
+
 func (s stockLocation) getKey() stockLocationKey {
 	return stockLocationKey{
 		loc:  s.Location,
