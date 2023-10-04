@@ -149,7 +149,7 @@ func (m *Map[T, R, K]) Get(
 	elemCount uint64,
 	rootKey R, key K,
 ) func() (Option[T], error) {
-	bucketKey := ComputeBucketKey(elemCount, rootKey, key, ":")
+	bucketKey := ComputeBucketKey(elemCount, rootKey, key, m.separator)
 
 	fn := m.item.Get(ctx, bucketKey)
 

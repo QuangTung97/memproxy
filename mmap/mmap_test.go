@@ -3,12 +3,14 @@ package mmap
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/item"
 	"github.com/QuangTung97/memproxy/mocks"
 )
 
@@ -66,7 +68,7 @@ type mapTest struct {
 	fillFunc       Filler[stockLocation, stockLocationRootKey]
 }
 
-func newMapTest() *mapTest {
+func newMapTest(options ...MapOption) *mapTest {
 	sess := memproxy.NewSessionProvider().New()
 
 	m := &mapTest{
@@ -74,6 +76,7 @@ func newMapTest() *mapTest {
 			LowerSessionFunc: func() memproxy.Session {
 				return sess
 			},
+			ExecuteFunc: func() {},
 		},
 	}
 
@@ -84,10 +87,15 @@ func newMapTest() *mapTest {
 			m.fillRootKeys = append(m.fillRootKeys, rootKey)
 			m.fillHashRanges = append(m.fillHashRanges, hashRange)
 
+			if m.fillFunc == nil {
+				panic("fillFunc is nil")
+			}
 			return m.fillFunc(ctx, rootKey, hashRange)
 		},
 		stockLocation.getKey,
+		options...,
 	)
+
 	return m
 }
 
@@ -97,6 +105,28 @@ func (m *mapTest) stubLeaseGet(resp memproxy.LeaseGetResponse) {
 	) func() (memproxy.LeaseGetResponse, error) {
 		return func() (memproxy.LeaseGetResponse, error) {
 			return resp, nil
+		}
+	}
+}
+
+func (m *mapTest) stubFillFunc(stocks ...stockLocation) {
+	m.fillFunc = func(
+		ctx context.Context, rootKey stockLocationRootKey, hashRange HashRange,
+	) func() ([]stockLocation, error) {
+		return func() ([]stockLocation, error) {
+			return stocks, nil
+		}
+	}
+}
+
+func (m *mapTest) stubLeaseSet() {
+	m.pipe.LeaseSetFunc = func(
+		key string, data []byte, cas uint64, options memproxy.LeaseSetOptions,
+	) func() (memproxy.LeaseSetResponse, error) {
+		return func() (memproxy.LeaseSetResponse, error) {
+			return memproxy.LeaseSetResponse{
+				Status: memproxy.LeaseSetStatusStored,
+			}, nil
 		}
 	}
 }
@@ -111,9 +141,11 @@ func mustMarshalStocks(b Bucket[stockLocation]) []byte {
 
 func TestMap(t *testing.T) {
 	const sku1 = "SKU01"
+	const sku2 = "SKU02"
 
 	const loc1 = "LOC01"
 	const loc2 = "LOC02"
+	const loc3 = "LOC03"
 
 	t.Run("with single bucket elem count, check lease get call", func(t *testing.T) {
 		m := newMapTest()
@@ -324,6 +356,304 @@ func TestMap(t *testing.T) {
 		calls := m.pipe.LeaseGetCalls()
 		assert.Equal(t, 1, len(calls))
 		assert.Equal(t, "p/stocks/SKU01:3:2", calls[0].Key)
+	})
+
+	t.Run("single key, with lease granted, do fill from cache", func(t *testing.T) {
+		m := newMapTest()
+
+		hash1 := newHash(0x7122, 2)
+
+		m.stubLeaseGet(memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    3300,
+		})
+
+		stock1 := stockLocation{
+			Sku:      sku1,
+			Location: loc1,
+			Hash:     hash1,
+			Quantity: 41,
+		}
+
+		m.stubFillFunc(stock1)
+		m.stubLeaseSet()
+
+		fn := m.mmap.Get(context.Background(), 110,
+			stockLocationRootKey{
+				sku: sku1,
+			},
+			stockLocationKey{
+				loc:  loc1,
+				hash: hash1,
+			},
+		)
+
+		result, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Option[stockLocation]{
+			Valid: true,
+			Data:  stock1,
+		}, result)
+
+		calls := m.pipe.LeaseGetCalls()
+		assert.Equal(t, 1, len(calls))
+		assert.Equal(t, "p/stocks/SKU01:5:70", calls[0].Key)
+
+		assert.Equal(t, []stockLocationRootKey{
+			{sku: sku1},
+		}, m.fillRootKeys)
+		assert.Equal(t, []HashRange{
+			{
+				Begin: 0x7000_0000_0000_0000,
+				End:   0x77ff_ffff_ffff_ffff,
+			},
+		}, m.fillHashRanges)
+
+		setCalls := m.pipe.LeaseSetCalls()
+		assert.Equal(t, 1, len(setCalls))
+		assert.Equal(t, "p/stocks/SKU01:5:70", setCalls[0].Key)
+		assert.Equal(t, uint64(3300), setCalls[0].Cas)
+
+		unmarshaler := NewBucketUnmarshaler(unmarshalStockLocation)
+		bucket, err := unmarshaler(setCalls[0].Data)
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Bucket[stockLocation]{
+			Values: []stockLocation{stock1},
+		}, bucket)
+	})
+
+	t.Run("single key, with options, with lease get error, do fill from cache", func(t *testing.T) {
+		m := newMapTest(
+			WithItemOptions(item.WithEnableFillingOnCacheError(true)),
+			WithSeparator("/"),
+		)
+
+		hash1 := newHash(0x7122, 2)
+
+		// lease get error
+		m.pipe.LeaseGetFunc = func(
+			key string, options memproxy.LeaseGetOptions,
+		) func() (memproxy.LeaseGetResponse, error) {
+			return func() (memproxy.LeaseGetResponse, error) {
+				return memproxy.LeaseGetResponse{}, errors.New("lease get error")
+			}
+		}
+
+		stock1 := stockLocation{
+			Sku:      sku1,
+			Location: loc1,
+			Hash:     hash1,
+			Quantity: 41,
+		}
+
+		m.stubFillFunc(stock1)
+		m.stubLeaseSet()
+
+		fn := m.mmap.Get(context.Background(), 110,
+			stockLocationRootKey{
+				sku: sku1,
+			},
+			stockLocationKey{
+				loc:  loc1,
+				hash: hash1,
+			},
+		)
+
+		result, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Option[stockLocation]{
+			Valid: true,
+			Data:  stock1,
+		}, result)
+
+		calls := m.pipe.LeaseGetCalls()
+		assert.Equal(t, 1, len(calls))
+		assert.Equal(t, "p/stocks/SKU01/5/70", calls[0].Key)
+
+		assert.Equal(t, []stockLocationRootKey{
+			{sku: sku1},
+		}, m.fillRootKeys)
+		assert.Equal(t, []HashRange{
+			{
+				Begin: 0x7000_0000_0000_0000,
+				End:   0x77ff_ffff_ffff_ffff,
+			},
+		}, m.fillHashRanges)
+
+		setCalls := m.pipe.LeaseSetCalls()
+		assert.Equal(t, 0, len(setCalls))
+	})
+
+	t.Run("fill error, should return error", func(t *testing.T) {
+		m := newMapTest()
+
+		hash1 := newHash(0x7122, 2)
+
+		m.stubLeaseGet(memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    3300,
+		})
+
+		m.fillFunc = func(
+			ctx context.Context, rootKey stockLocationRootKey, hashRange HashRange,
+		) func() ([]stockLocation, error) {
+			return func() ([]stockLocation, error) {
+				return nil, errors.New("fill error")
+			}
+		}
+
+		fn := m.mmap.Get(context.Background(), 110,
+			stockLocationRootKey{
+				sku: sku1,
+			},
+			stockLocationKey{
+				loc:  loc1,
+				hash: hash1,
+			},
+		)
+
+		result, err := fn()
+		assert.Equal(t, errors.New("fill error"), err)
+		assert.Equal(t, Option[stockLocation]{}, result)
+	})
+
+	t.Run("multiple keys", func(t *testing.T) {
+		m := newMapTest()
+
+		hash1 := newHash(0x7122, 2)
+		hash2 := newHash(0x9122, 2)
+		hash3 := newHash(0xaf22, 2)
+
+		m.stubLeaseGet(memproxy.LeaseGetResponse{
+			Status: memproxy.LeaseGetStatusLeaseGranted,
+			CAS:    3300,
+		})
+
+		stock1 := stockLocation{
+			Sku:      sku1,
+			Location: loc1,
+			Hash:     hash1,
+			Quantity: 41,
+		}
+
+		stock2 := stockLocation{
+			Sku:      sku2,
+			Location: loc2,
+			Hash:     hash2,
+			Quantity: 41,
+		}
+
+		stocks := [][]stockLocation{
+			{stock1},
+			{stock2},
+			{},
+		}
+
+		m.fillFunc = func(
+			ctx context.Context, rootKey stockLocationRootKey, hashRange HashRange,
+		) func() ([]stockLocation, error) {
+			index := len(m.fillRootKeys) - 1
+			return func() ([]stockLocation, error) {
+				return stocks[index], nil
+			}
+		}
+
+		m.stubLeaseSet()
+
+		fn1 := m.mmap.Get(context.Background(), 110,
+			stockLocationRootKey{
+				sku: sku1,
+			},
+			stockLocationKey{
+				loc:  loc1,
+				hash: hash1,
+			},
+		)
+		fn2 := m.mmap.Get(context.Background(), 110,
+			stockLocationRootKey{
+				sku: sku2,
+			},
+			stockLocationKey{
+				loc:  loc2,
+				hash: hash2,
+			},
+		)
+		fn3 := m.mmap.Get(context.Background(), 110,
+			stockLocationRootKey{
+				sku: sku2,
+			},
+			stockLocationKey{
+				loc:  loc3,
+				hash: hash3,
+			},
+		)
+
+		result, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Option[stockLocation]{
+			Valid: true,
+			Data:  stock1,
+		}, result)
+
+		result, err = fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Option[stockLocation]{
+			Valid: true,
+			Data:  stock2,
+		}, result)
+
+		result, err = fn3()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Option[stockLocation]{}, result)
+
+		calls := m.pipe.LeaseGetCalls()
+		assert.Equal(t, 3, len(calls))
+		assert.Equal(t, "p/stocks/SKU01:5:70", calls[0].Key)
+		assert.Equal(t, "p/stocks/SKU02:5:90", calls[1].Key)
+		assert.Equal(t, "p/stocks/SKU02:5:a8", calls[2].Key)
+
+		assert.Equal(t, []stockLocationRootKey{
+			{sku: sku1},
+			{sku: sku2},
+			{sku: sku2},
+		}, m.fillRootKeys)
+
+		assert.Equal(t, []HashRange{
+			{
+				Begin: 0x7000_0000_0000_0000,
+				End:   0x77ff_ffff_ffff_ffff,
+			},
+			{
+				Begin: 0x9000_0000_0000_0000,
+				End:   0x97ff_ffff_ffff_ffff,
+			},
+			{
+				Begin: 0xa800_0000_0000_0000,
+				End:   0xafff_ffff_ffff_ffff,
+			},
+		}, m.fillHashRanges)
+
+		setCalls := m.pipe.LeaseSetCalls()
+		assert.Equal(t, 3, len(setCalls))
+		assert.Equal(t, "p/stocks/SKU01:5:70", setCalls[0].Key)
+		assert.Equal(t, "p/stocks/SKU02:5:90", setCalls[1].Key)
+		assert.Equal(t, "p/stocks/SKU02:5:a8", setCalls[2].Key)
+
+		assert.Equal(t, uint64(3300), setCalls[0].Cas)
+
+		unmarshaler := NewBucketUnmarshaler(unmarshalStockLocation)
+
+		bucket, err := unmarshaler(setCalls[0].Data)
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Bucket[stockLocation]{
+			Values: []stockLocation{stock1},
+		}, bucket)
+
+		bucket, err = unmarshaler(setCalls[1].Data)
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Bucket[stockLocation]{
+			Values: []stockLocation{stock2},
+		}, bucket)
 	})
 }
 
