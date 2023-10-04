@@ -399,6 +399,103 @@ func TestComputeSizeLog(t *testing.T) {
 		sizeLog = computeSizeLog(2, 64, newHash(0xffff, 2))
 		assert.Equal(t, uint8(4), sizeLog)
 	})
+
+	t.Run("with bucket size log = 0", func(t *testing.T) {
+		sizeLog := computeSizeLog(0, 0, newHash(0x0fff, 2))
+		assert.Equal(t, uint8(0), sizeLog)
+
+		sizeLog = computeSizeLog(0, 1, newHash(0x0fff, 2))
+		assert.Equal(t, uint8(0), sizeLog)
+
+		sizeLog = computeSizeLog(0, 2, newHash(0x0fff, 2))
+		assert.Equal(t, uint8(1), sizeLog)
+
+		sizeLog = computeSizeLog(0, 3, newHash(0x0fff, 2))
+		assert.Equal(t, uint8(2), sizeLog)
+
+		sizeLog = computeSizeLog(0, 3, newHash(0xffff, 2))
+		assert.Equal(t, uint8(1), sizeLog)
+
+		sizeLog = computeSizeLog(0, 8, newHash(0b1111_1111, 1))
+		assert.Equal(t, uint8(3), sizeLog)
+
+		sizeLog = computeSizeLog(0, 9, newHash(0b0001_1111, 1))
+		assert.Equal(t, uint8(4), sizeLog)
+
+		sizeLog = computeSizeLog(0, 9, newHash(0b0010_0000, 1))
+		assert.Equal(t, uint8(3), sizeLog)
+	})
+
+	t.Run("with bucket size log = 0, bigger count", func(t *testing.T) {
+		// count = 32
+		sizeLog := computeSizeLog(0, 32, newHash(0b1111_1111, 1))
+		assert.Equal(t, uint8(5), sizeLog)
+
+		sizeLog = computeSizeLog(0, 32, newHash(0b0000_0000, 1))
+		assert.Equal(t, uint8(5), sizeLog)
+
+		// count = 33
+		sizeLog = computeSizeLog(0, 33, newHash(0b0000_0111, 1))
+		assert.Equal(t, uint8(6), sizeLog)
+
+		sizeLog = computeSizeLog(0, 33, newHash(0b0000_1000, 1))
+		assert.Equal(t, uint8(5), sizeLog)
+
+		sizeLog = computeSizeLog(0, 33, newHash(0b1111_1111, 1))
+		assert.Equal(t, uint8(5), sizeLog)
+
+		// count = 40
+		sizeLog = computeSizeLog(0, 40, newHash(0b0011_1111, 1))
+		assert.Equal(t, uint8(6), sizeLog)
+
+		sizeLog = computeSizeLog(0, 40, newHash(0b0100_0000, 1))
+		assert.Equal(t, uint8(5), sizeLog)
+	})
+
+	t.Run("with bucket size log = 4", func(t *testing.T) {
+		sizeLog := computeSizeLog(4, 0, newHash(0x0000, 2))
+		assert.Equal(t, uint8(0), sizeLog)
+
+		sizeLog = computeSizeLog(4, 16, newHash(0x0000, 2))
+		assert.Equal(t, uint8(0), sizeLog)
+
+		// count = 17
+		sizeLog = computeSizeLog(4, 17, newHash(0b0000_0000, 1))
+		assert.Equal(t, uint8(1), sizeLog)
+
+		sizeLog = computeSizeLog(4, 17, newHash(0b0111_1111, 1))
+		assert.Equal(t, uint8(1), sizeLog)
+
+		sizeLog = computeSizeLog(4, 17, newHash(0b1000_0000, 1))
+		assert.Equal(t, uint8(0), sizeLog)
+
+		// count = 128
+		sizeLog = computeSizeLog(4, 128, newHash(0b0000_0000, 1))
+		assert.Equal(t, uint8(3), sizeLog)
+
+		sizeLog = computeSizeLog(4, 128, newHash(0b1111_1111, 1))
+		assert.Equal(t, uint8(3), sizeLog)
+
+		// count = 129
+		sizeLog = computeSizeLog(4, 129, newHash(0b0000_0000, 1))
+		assert.Equal(t, uint8(4), sizeLog)
+
+		sizeLog = computeSizeLog(4, 129, newHash(0b0000_1111, 1))
+		assert.Equal(t, uint8(4), sizeLog)
+
+		sizeLog = computeSizeLog(4, 129, newHash(0b0001_0000, 1))
+		assert.Equal(t, uint8(3), sizeLog)
+
+		sizeLog = computeSizeLog(4, 129, newHash(0b1111_1111, 1))
+		assert.Equal(t, uint8(3), sizeLog)
+
+		// count = 136
+		sizeLog = computeSizeLog(4, 136, newHash(0b0000_1111, 1))
+		assert.Equal(t, uint8(4), sizeLog)
+
+		sizeLog = computeSizeLog(4, 136, newHash(0b0001_0000, 1))
+		assert.Equal(t, uint8(3), sizeLog)
+	})
 }
 
 func TestComputeBucketKeyString(t *testing.T) {
@@ -440,5 +537,33 @@ func TestComputeBucketKeyString(t *testing.T) {
 			"/",
 		)
 		assert.Equal(t, "p/stocks/SKU01/4/1", s)
+	})
+
+	t.Run("middle of size log = 4", func(t *testing.T) {
+		const elemCount = 96
+
+		s := ComputeBucketKeyString(
+			elemCount,
+			stockLocationRootKey{
+				sku: "SKU01",
+			},
+			stockLocationKey{
+				hash: newHash(0b0111_1111, 1),
+			},
+			"/",
+		)
+		assert.Equal(t, "p/stocks/SKU01/5/78", s)
+
+		s = ComputeBucketKeyString(
+			elemCount,
+			stockLocationRootKey{
+				sku: "SKU01",
+			},
+			stockLocationKey{
+				hash: newHash(0b1000_0000, 1),
+			},
+			"/",
+		)
+		assert.Equal(t, "p/stocks/SKU01/4/8", s)
 	})
 }

@@ -42,6 +42,7 @@ type Map[T Value, R RootKey, K Key] struct {
 	item *item.Item[Bucket[T], BucketKey[R]]
 
 	getKeyFunc func(v T) K
+	separator  string
 }
 
 // New ...
@@ -50,7 +51,10 @@ func New[T Value, R RootKey, K Key](
 	unmarshaler item.Unmarshaler[T],
 	filler Filler[T, R],
 	getKeyFunc func(v T) K,
+	options ...MapOption,
 ) *Map[T, R, K] {
+	conf := computeMapConfig(options)
+
 	bucketFiller := func(ctx context.Context, key BucketKey[R]) func() (Bucket[T], error) {
 		fn := filler(ctx, key.RootKey, key.GetHashRange())
 		return func() (Bucket[T], error) {
@@ -69,8 +73,10 @@ func New[T Value, R RootKey, K Key](
 			pipeline,
 			NewBucketUnmarshaler(unmarshaler),
 			bucketFiller,
+			conf.itemOptions...,
 		),
 		getKeyFunc: getKeyFunc,
+		separator:  conf.separator,
 	}
 }
 
@@ -94,8 +100,15 @@ func computeSizeLog(
 
 	prevSizeLog := uint64(1) << (avgBucketSizeLog + sizeLog - 1)
 
-	boundValue := (elemCount - 1 - prevSizeLog) >> (avgBucketSizeLog - 1)
-	boundEnd := boundValue<<(64-sizeLog) | (math.MaxUint64 >> sizeLog)
+	var boundEnd uint64
+	if avgBucketSizeLog >= 1 {
+		boundValue := (elemCount - 1 - prevSizeLog) >> (avgBucketSizeLog - 1)
+		boundEnd = boundValue<<(64-sizeLog) | (math.MaxUint64 >> sizeLog)
+	} else {
+		boundValue := elemCount - 1 - prevSizeLog
+		shift := sizeLog - 1
+		boundEnd = boundValue<<(64-shift) | (math.MaxUint64 >> shift)
+	}
 
 	if hash <= boundEnd {
 		return sizeLog
