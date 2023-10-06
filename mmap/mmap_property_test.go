@@ -472,6 +472,11 @@ func TestMap_PropertyBased_SizeLog_To_1(t *testing.T) {
 		Valid: true,
 		Data:  stock10,
 	}, result)
+
+	stats := mapCache.GetItemStats()
+	assert.Equal(t, uint64(0), stats.HitCount)
+	assert.Equal(t, uint64(2), stats.FillCount)
+	assert.Equal(t, uint64(0), stats.FirstRejectedCount)
 }
 
 func TestMapPropertyTest_PutAndGetStocks(t *testing.T) {

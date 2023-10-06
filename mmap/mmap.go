@@ -124,10 +124,13 @@ func ComputeBucketKey[R RootKey, K Key](
 ) BucketKey[R] {
 	hash := key.Hash()
 
+	sizeLog := computeSizeLog(rootKey.AvgBucketSizeLog(), elemCount, hash)
+	mask := uint64(math.MaxUint64) << (64 - sizeLog)
+
 	return BucketKey[R]{
 		RootKey: rootKey,
-		SizeLog: computeSizeLog(rootKey.AvgBucketSizeLog(), elemCount, hash),
-		Hash:    hash,
+		SizeLog: sizeLog,
+		Hash:    hash & mask,
 		Sep:     separator,
 	}
 }
@@ -178,4 +181,9 @@ func (m *Map[T, R, K]) Get(
 
 		return Option[T]{}, nil
 	}
+}
+
+// GetItemStats returns the underlining item stats
+func (m *Map[T, R, K]) GetItemStats() item.Stats {
+	return m.item.GetStats()
 }
