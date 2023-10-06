@@ -189,7 +189,11 @@ func clearMemcache() {
 	}
 }
 
-func newMemcacheWithProxy(t *testing.T) memproxy.Memcache {
+type cleanerInterface interface {
+	Cleanup(fn func())
+}
+
+func newMemcacheWithProxy(t cleanerInterface) memproxy.Memcache {
 	clearMemcache()
 
 	server1 := proxy.SimpleServerConfig{

@@ -22,9 +22,15 @@ type BucketKey[R RootKey] struct {
 
 // String ...
 func (k BucketKey[R]) String() string {
+	rootKey := k.RootKey.String()
+
 	var buf strings.Builder
 
-	_, _ = buf.WriteString(k.RootKey.String())
+	// 2 byte for size log
+	// 8 byte for hash value => can contain 4 byte uint32
+	buf.Grow(len(rootKey) + 2*len(k.Sep) + 10)
+
+	_, _ = buf.WriteString(rootKey)
 	_, _ = buf.WriteString(k.Sep)
 	_, _ = buf.WriteString(strconv.FormatInt(int64(k.SizeLog), 10))
 	_, _ = buf.WriteString(k.Sep)
