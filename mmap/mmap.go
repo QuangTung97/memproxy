@@ -12,6 +12,11 @@ import (
 // RootKey constraints
 type RootKey interface {
 	item.Key
+
+	// AvgBucketSizeLog returns the logarithm base 2 of expected average size per bucket
+	// values should be between [0, 8]
+	// value = 0 => average 1 element per bucket
+	// value = 3 => average 8 elements per bucket
 	AvgBucketSizeLog() uint8
 }
 
@@ -80,7 +85,7 @@ func New[T Value, R RootKey, K Key](
 	}
 }
 
-// Option ...
+// Option an optional value
 type Option[T any] struct {
 	Valid bool
 	Data  T
