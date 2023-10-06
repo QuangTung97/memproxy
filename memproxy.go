@@ -57,7 +57,8 @@ func funcOnlyCallbackFunc(input unsafe.Pointer) {
 	obj.fn()
 }
 
-func newSimpleCallBack(fn func()) CallbackFunc {
+// NewSimpleCallBack for function only callback
+func NewSimpleCallBack(fn func()) CallbackFunc {
 	return CallbackFunc{
 		Object: unsafe.Pointer(&emptyFuncObject{
 			fn: fn,

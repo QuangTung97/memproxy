@@ -335,7 +335,7 @@ func (s *getState[T, K]) handleCacheError(err error) {
 	}
 }
 
-func getStateNextFuncCallback[T Value, K Key](obj unsafe.Pointer) {
+func stateNextFuncCallback[T Value, K Key](obj unsafe.Pointer) {
 	s := (*getState[T, K])(obj)
 	s.nextFunc()
 }
@@ -343,7 +343,7 @@ func getStateNextFuncCallback[T Value, K Key](obj unsafe.Pointer) {
 func newNextFuncCallback[T Value, K Key](s *getState[T, K]) memproxy.CallbackFunc {
 	return memproxy.CallbackFunc{
 		Object: unsafe.Pointer(s),
-		Func:   getStateNextFuncCallback[T, K],
+		Func:   stateNextFuncCallback[T, K],
 	}
 }
 
@@ -355,7 +355,7 @@ func (s *getState[T, K]) leaseRejectedDelayHandler() {
 	s.it.sess.AddNextCall(newNextFuncCallback(s))
 }
 
-func getStateDelayCallback[T Value, K Key](obj unsafe.Pointer) {
+func stateDelayCallback[T Value, K Key](obj unsafe.Pointer) {
 	s := (*getState[T, K])(obj)
 	s.leaseRejectedDelayHandler()
 }
@@ -393,7 +393,7 @@ func (s *getState[T, K]) nextFunc() {
 				s.it.options.sleepDurations[s.retryCount],
 				memproxy.CallbackFunc{
 					Object: unsafe.Pointer(s),
-					Func:   getStateDelayCallback[T, K],
+					Func:   stateDelayCallback[T, K],
 				},
 			)
 			return

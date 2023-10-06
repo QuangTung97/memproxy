@@ -2,9 +2,11 @@ package fake
 
 import (
 	"context"
-	"github.com/QuangTung97/memproxy"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/memproxy"
 )
 
 func newPipelineTest() memproxy.Pipeline {
@@ -226,9 +228,9 @@ func TestPipeline__Do_Finish(t *testing.T) {
 		sess := pipe.LowerSession()
 
 		calls := 0
-		sess.AddNextCall(func() {
+		sess.AddNextCall(memproxy.NewSimpleCallBack(func() {
 			calls++
-		})
+		}))
 		sess.Execute()
 
 		assert.Equal(t, 1, calls)

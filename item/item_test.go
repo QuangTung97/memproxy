@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/fake"
 	"github.com/QuangTung97/memproxy/mocks"
-	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 type userValue struct {
@@ -118,12 +120,12 @@ func newItemTestWithSleepDurations(
 		},
 	}
 
-	var calls []func()
+	var calls []memproxy.CallbackFunc
 
-	sess.AddNextCallFunc = func(fn func()) {
+	sess.AddNextCallFunc = func(fn memproxy.CallbackFunc) {
 		calls = append(calls, fn)
 	}
-	sess.AddDelayedCallFunc = func(d time.Duration, fn func()) {
+	sess.AddDelayedCallFunc = func(d time.Duration, fn memproxy.CallbackFunc) {
 		i.delayCalls = append(i.delayCalls, d)
 		calls = append(calls, fn)
 	}
@@ -132,7 +134,7 @@ func newItemTestWithSleepDurations(
 			nextCalls := calls
 			calls = nil
 			for _, fn := range nextCalls {
-				fn()
+				fn.Call()
 			}
 		}
 	}

@@ -59,7 +59,7 @@ func newCallMock() *callMock {
 }
 
 func (m *callMock) get() CallbackFunc {
-	return newSimpleCallBack(func() {
+	return NewSimpleCallBack(func() {
 		m.count++
 		m.fn()
 	})

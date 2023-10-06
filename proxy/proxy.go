@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"unsafe"
+
 	"github.com/QuangTung97/go-memcache/memcache"
+
 	"github.com/QuangTung97/memproxy"
 )
 
@@ -207,6 +210,16 @@ func (s *leaseGetState) retryOnOtherNode() {
 	}
 }
 
+func stateNextCallback(obj unsafe.Pointer) {
+	s := (*leaseGetState)(obj)
+	s.nextFunc()
+}
+
+func stateRetryOnOtherNodeCallback(obj unsafe.Pointer) {
+	s := (*leaseGetState)(obj)
+	s.retryOnOtherNode()
+}
+
 func (s *leaseGetState) nextFunc() {
 	s.pipe.doExecuteForAllServers()
 	s.resp, s.err = s.fn()
@@ -222,7 +235,10 @@ func (s *leaseGetState) nextFunc() {
 		pipe := s.pipe.getRoutePipeline(s.serverID)
 		s.fn = pipe.LeaseGet(s.key, s.options)
 
-		s.pipe.sess.AddNextCall(s.retryOnOtherNode)
+		s.pipe.sess.AddNextCall(memproxy.CallbackFunc{
+			Object: unsafe.Pointer(s),
+			Func:   stateRetryOnOtherNodeCallback,
+		})
 		return
 	}
 
@@ -253,7 +269,11 @@ func (p *Pipeline) LeaseGet(
 		fn: fn,
 	}
 
-	p.sess.AddNextCall(state.nextFunc)
+	p.sess.AddNextCall(memproxy.CallbackFunc{
+		Object: unsafe.Pointer(state),
+		Func:   stateNextCallback,
+	})
+
 	return state.returnFunc
 }
 
