@@ -31,13 +31,6 @@ func newMultiGetFillerTest() *multiGetFillerTest {
 	return f
 }
 func TestNewMultiGetFiller(t *testing.T) {
-	const sku1 = "SKU01"
-	const sku2 = "SKU02"
-	const sku3 = "SKU03"
-
-	const loc1 = "LOC01"
-	const loc2 = "LOC02"
-
 	hash1 := HashRange{
 		Begin: newHash(0x1000, 2),
 		End:   newHash(0x1fff, 2),
@@ -223,5 +216,77 @@ func TestNewMultiGetFiller(t *testing.T) {
 				{RootKey: stock2.getRootKey(), Range: hash2},
 			},
 		}, f.fillKeys)
+	})
+}
+
+func TestLowerBound(t *testing.T) {
+	newLoc := func(hash uint64) stockLocation {
+		return stockLocation{
+			Sku:      "SKU01",
+			Location: "LOC01",
+			Hash:     hash,
+			Quantity: 12,
+		}
+	}
+
+	t.Run("normal", func(t *testing.T) {
+		index := findLowerBound[stockLocation, stockLocationKey](
+			[]stockLocation{
+				newLoc(11),
+				newLoc(12),
+				newLoc(13),
+				newLoc(13),
+				newLoc(14),
+				newLoc(14),
+				newLoc(15),
+				newLoc(16),
+				newLoc(17),
+			},
+			stockLocation.getKey,
+			14,
+		)
+		assert.Equal(t, 4, index)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		index := findLowerBound[stockLocation, stockLocationKey](
+			[]stockLocation{},
+			stockLocation.getKey,
+			14,
+		)
+		assert.Equal(t, 0, index)
+	})
+
+	t.Run("single smaller than bound", func(t *testing.T) {
+		index := findLowerBound[stockLocation, stockLocationKey](
+			[]stockLocation{newLoc(11)},
+			stockLocation.getKey,
+			14,
+		)
+		assert.Equal(t, 1, index)
+	})
+
+	t.Run("values with no value = bound", func(t *testing.T) {
+		index := findLowerBound[stockLocation, stockLocationKey](
+			[]stockLocation{
+				newLoc(11),
+				newLoc(12),
+				newLoc(13),
+				newLoc(15),
+				newLoc(16),
+			},
+			stockLocation.getKey,
+			14,
+		)
+		assert.Equal(t, 3, index)
+	})
+
+	t.Run("all bigger than bound", func(t *testing.T) {
+		index := findLowerBound[stockLocation, stockLocationKey](
+			[]stockLocation{newLoc(15), newLoc(16)},
+			stockLocation.getKey,
+			14,
+		)
+		assert.Equal(t, 0, index)
 	})
 }

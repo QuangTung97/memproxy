@@ -42,6 +42,8 @@ github.com/gonum/floats v0.0.0-20181209220543-c233463c7e82/go.mod h1:PxC8OnwL11+
 github.com/gonum/internal v0.0.0-20181124074243-f884aa714029/go.mod h1:Pu4dmpkhSyOzRwuXkOgAvijx4o+4YMUJJo9OvPYMkks=
 github.com/gonum/lapack v0.0.0-20181123203213-e4cdc5a0bff9/go.mod h1:XA3DeT6rxh2EAE789SSiSJNqxPaC0aE9J8NTOI0Jo/A=
 github.com/gonum/matrix v0.0.0-20181209220409-c518dec07be9/go.mod h1:0EXg4mc1CNP0HCqCz+K4ts155PXIlUywf0wqN+GfPZw=
+github.com/google/btree v1.1.2 h1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=
+github.com/google/btree v1.1.2/go.mod h1:qOPhT0dTNdNzV6Z/lhRX0YXUafgPLFUh+gZMl761Gm4=
 github.com/google/safehtml v0.0.2/go.mod h1:L4KWwDsUJdECRAEpZoBn3O64bQaywRscowZjJAzjHnU=
 github.com/googleapis/gax-go v0.0.0-20161107002406-da06d194a00e/go.mod h1:SFVmujtThgffbyetf+mdk2eWhX2bMyUtNHzFKcPA9HY=
 github.com/jung-kurt/gofpdf v1.0.0/go.mod h1:7Id9E/uU8ce6rXgefFLlgrJj/GYY22cpxn+r32jIOes=

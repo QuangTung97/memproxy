@@ -136,6 +136,14 @@ func ComputeBucketKey[R RootKey, K Key](
 func ComputeBucketKeyString[R RootKey, K Key](
 	elemCount uint64,
 	rootKey R, key K,
+) string {
+	return ComputeBucketKeyStringWithSeparator(elemCount, rootKey, key, ":")
+}
+
+// ComputeBucketKeyStringWithSeparator ...
+func ComputeBucketKeyStringWithSeparator[R RootKey, K Key](
+	elemCount uint64,
+	rootKey R, key K,
 	separator string,
 ) string {
 	return ComputeBucketKey(elemCount, rootKey, key, separator).String()
