@@ -115,7 +115,6 @@ func (m *mapPropertyTest) putStock(stock stockLocation) {
 		stock.getRootKey(),
 		stock.getKey(),
 	)
-	fmt.Println(cacheKey)
 
 	fn := pipe.Delete(cacheKey, memproxy.DeleteOptions{})
 	_, err := fn()
@@ -124,11 +123,11 @@ func (m *mapPropertyTest) putStock(stock stockLocation) {
 	}
 }
 
-func (m *mapPropertyTest) getCounter(rootKey stockLocationRootKey) uint64 {
+func (m *mapPropertyTest) getCounter(sku string) uint64 {
 	m.mut.Lock()
 	defer m.mut.Unlock()
 
-	return m.stockCounters[rootKey.sku]
+	return m.stockCounters[sku]
 }
 
 func (m *mapPropertyTest) getStocksByHashes(
@@ -211,6 +210,268 @@ func newMemcacheWithProxy(t *testing.T) memproxy.Memcache {
 	}
 
 	return mc
+}
+
+func newLocKeyHash(loc string) stockLocationKey {
+	return stockLocationKey{
+		loc:  loc,
+		hash: murmur3.Sum64([]byte(loc)),
+	}
+}
+
+func newRootKey(sku string) stockLocationRootKey {
+	return stockLocationRootKey{
+		sku: sku,
+	}
+}
+
+func TestMap_PropertyBased_Emtpy__Then_Multiple_Stocks(t *testing.T) {
+	m := newMapPropertyTest(t)
+	ctx := context.Background()
+
+	pipe := m.mc.Pipeline(ctx)
+	defer pipe.Finish()
+
+	// get empty
+	counter := m.getCounter(sku1)
+	assert.Equal(t, uint64(0), counter)
+
+	mapCache := m.newMap(pipe)
+	fn := mapCache.Get(ctx, counter, newRootKey(sku1), newLocKeyHash(loc1))
+
+	result, err := fn()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Option[stockLocation]{}, result)
+
+	// ==================================
+	// put one stock
+	// ==================================
+	stock1 := stockLocation{
+		Sku:      sku1,
+		Location: loc1,
+		Quantity: 41,
+	}
+
+	m.putStock(stock1)
+	resetStockHash(&stock1)
+
+	counter = m.getCounter(sku1)
+	assert.Equal(t, uint64(1), counter)
+
+	// get again
+	mapCache = m.newMap(pipe)
+	fn1 := mapCache.Get(ctx, counter, newRootKey(sku1), newLocKeyHash(loc1))
+	fn2 := mapCache.Get(ctx, counter, newRootKey(sku1), newLocKeyHash(loc2))
+	fn3 := mapCache.Get(ctx, counter, newRootKey(sku2), newLocKeyHash(loc1))
+
+	result, err = fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Option[stockLocation]{
+		Valid: true,
+		Data:  stock1,
+	}, result)
+
+	result, err = fn2()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Option[stockLocation]{}, result)
+
+	result, err = fn3()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Option[stockLocation]{}, result)
+
+	// ==================================
+	// put another stock
+	// ==================================
+	stock2 := stockLocation{
+		Sku:      sku2,
+		Location: loc3,
+		Quantity: 42,
+	}
+
+	m.putStock(stock2)
+	resetStockHash(&stock2)
+
+	counter = m.getCounter(sku2)
+	assert.Equal(t, uint64(1), counter)
+
+	// get again
+	mapCache = m.newMap(pipe)
+	fn1 = mapCache.Get(ctx, counter, newRootKey(sku2), newLocKeyHash(loc1))
+	fn2 = mapCache.Get(ctx, counter, newRootKey(sku2), newLocKeyHash(loc3))
+
+	result, err = fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Option[stockLocation]{}, result)
+
+	result, err = fn2()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Option[stockLocation]{
+		Valid: true,
+		Data:  stock2,
+	}, result)
+}
+
+func newStockHash(i int, loc int) stockLocation {
+	s := stockLocation{
+		Sku:      fmt.Sprintf("SKU%05d", i+1),
+		Location: fmt.Sprintf("SKU%04d", loc+1),
+		Quantity: float64(100*i + loc + 1),
+	}
+	resetStockHash(&s)
+	return s
+}
+
+func TestMap_PropertyBased_SizeLog_To_1(t *testing.T) {
+	m := newMapPropertyTest(t)
+	ctx := context.Background()
+
+	pipe := m.mc.Pipeline(ctx)
+	defer pipe.Finish()
+
+	const numKeys = 8
+
+	// =====================
+	// Get Empty
+	// =====================
+	mapCache := m.newMap(pipe)
+
+	fnList := make([]func() (Option[stockLocation], error), 0)
+	for i := 0; i < numKeys; i++ {
+		stock := newStockHash(0, i)
+
+		fn := mapCache.Get(ctx, 0, stock.getRootKey(), stock.getKey())
+		fnList = append(fnList, fn)
+	}
+
+	for _, fn := range fnList {
+		result, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Option[stockLocation]{}, result)
+	}
+
+	// =============
+	// put multi
+	// =============
+	for i := 0; i < numKeys; i++ {
+		stock := newStockHash(0, i)
+		m.putStock(stock)
+	}
+
+	// =====================
+	// Get Again All Found
+	// =====================
+	mapCache = m.newMap(pipe)
+
+	counter := m.getCounter(newStockHash(0, 0).Sku)
+	assert.Equal(t, uint64(8), counter)
+
+	fnList = make([]func() (Option[stockLocation], error), 0)
+	for i := 0; i < numKeys; i++ {
+		stock := newStockHash(0, i)
+
+		fn := mapCache.Get(ctx, counter, stock.getRootKey(), stock.getKey())
+		fnList = append(fnList, fn)
+	}
+
+	for i, fn := range fnList {
+		result, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, Option[stockLocation]{
+			Valid: true,
+			Data:  newStockHash(0, i),
+		}, result)
+	}
+
+	// ========================
+	// update stocks quantity
+	// ========================
+	for i := 0; i < numKeys; i++ {
+		stock := newStockHash(0, i)
+		stock.Quantity += 1000
+		m.putStock(stock)
+	}
+
+	// =====================
+	// Get Again All Found with updated
+	// =====================
+	mapCache = m.newMap(pipe)
+
+	counter = m.getCounter(newStockHash(0, 0).Sku)
+	assert.Equal(t, uint64(8), counter)
+
+	fnList = make([]func() (Option[stockLocation], error), 0)
+	for i := 0; i < numKeys; i++ {
+		stock := newStockHash(0, i)
+
+		fn := mapCache.Get(ctx, counter, stock.getRootKey(), stock.getKey())
+		fnList = append(fnList, fn)
+	}
+
+	for i, fn := range fnList {
+		result, err := fn()
+		assert.Equal(t, nil, err)
+
+		stock := newStockHash(0, i)
+		stock.Quantity += 1000
+		assert.Equal(t, Option[stockLocation]{
+			Valid: true,
+			Data:  stock,
+		}, result)
+	}
+
+	// ========================
+	// put some more
+	// ========================
+	stock8 := newStockHash(0, 8)
+	m.putStock(stock8)
+
+	stock9 := newStockHash(0, 9)
+	m.putStock(stock9)
+
+	stock10 := newStockHash(0, 10)
+	m.putStock(stock10)
+
+	// ================================
+	// Get Again All with bigger count
+	// ================================
+	mapCache = m.newMap(pipe)
+
+	counter = m.getCounter(newStockHash(0, 0).Sku)
+	assert.Equal(t, uint64(11), counter)
+
+	fnList = make([]func() (Option[stockLocation], error), 0)
+	for i := 0; i < numKeys; i++ {
+		stock := newStockHash(0, i)
+
+		fn := mapCache.Get(ctx, counter, stock.getRootKey(), stock.getKey())
+		fnList = append(fnList, fn)
+	}
+
+	for i, fn := range fnList {
+		result, err := fn()
+		assert.Equal(t, nil, err)
+
+		stock := newStockHash(0, i)
+		stock.Quantity += 1000
+		assert.Equal(t, Option[stockLocation]{
+			Valid: true,
+			Data:  stock,
+		}, result)
+	}
+
+	result, err := mapCache.Get(ctx, counter, stock8.getRootKey(), stock8.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Option[stockLocation]{
+		Valid: true,
+		Data:  stock8,
+	}, result)
+
+	result, err = mapCache.Get(ctx, counter, stock10.getRootKey(), stock10.getKey())()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Option[stockLocation]{
+		Valid: true,
+		Data:  stock10,
+	}, result)
 }
 
 func TestMapPropertyTest_PutAndGetStocks(t *testing.T) {

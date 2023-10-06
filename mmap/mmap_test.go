@@ -145,14 +145,15 @@ func mustMarshalStocks(b Bucket[stockLocation]) []byte {
 	return data
 }
 
+const sku1 = "SKU01"
+const sku2 = "SKU02"
+const sku3 = "SKU03"
+
+const loc1 = "LOC01"
+const loc2 = "LOC02"
+const loc3 = "LOC03"
+
 func TestMap(t *testing.T) {
-	const sku1 = "SKU01"
-	const sku2 = "SKU02"
-
-	const loc1 = "LOC01"
-	const loc2 = "LOC02"
-	const loc3 = "LOC03"
-
 	t.Run("with single bucket elem count, check lease get call", func(t *testing.T) {
 		m := newMapTest()
 

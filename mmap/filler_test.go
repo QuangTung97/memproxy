@@ -31,13 +31,6 @@ func newMultiGetFillerTest() *multiGetFillerTest {
 	return f
 }
 func TestNewMultiGetFiller(t *testing.T) {
-	const sku1 = "SKU01"
-	const sku2 = "SKU02"
-	const sku3 = "SKU03"
-
-	const loc1 = "LOC01"
-	const loc2 = "LOC02"
-
 	hash1 := HashRange{
 		Begin: newHash(0x1000, 2),
 		End:   newHash(0x1fff, 2),
