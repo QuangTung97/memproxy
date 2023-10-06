@@ -203,7 +203,7 @@ func New[T Value, K Key](
 		unmarshaler: unmarshaler,
 		filler:      filler,
 
-		getKeys: map[K]getResultType[T]{},
+		getKeys: map[string]getResultType[T]{},
 	}
 }
 
@@ -216,7 +216,7 @@ type Item[T Value, K Key] struct {
 	unmarshaler Unmarshaler[T]
 	filler      Filler[T, K]
 
-	getKeys map[K]getResultType[T]
+	getKeys map[string]getResultType[T]
 
 	stats Stats
 }
@@ -269,13 +269,13 @@ type getState[T Value, K Key] struct {
 
 func (s *getState[T, K]) setResponseError(err error) {
 	s.it.options.errorLogger(err)
-	s.it.getKeys[s.key] = getResultType[T]{
+	s.it.getKeys[s.keyStr] = getResultType[T]{
 		err: err,
 	}
 }
 
 func (s *getState[T, K]) setResponse(resp T) {
-	s.it.getKeys[s.key] = getResultType[T]{
+	s.it.getKeys[s.keyStr] = getResultType[T]{
 		resp: resp,
 	}
 }
@@ -348,7 +348,7 @@ func (s *getState[T, K]) nextFunc() {
 func (s *getState[T, K]) returnFunc() (T, error) {
 	s.it.sess.Execute()
 
-	result := s.it.getKeys[s.key]
+	result := s.it.getKeys[s.keyStr]
 	return result.resp, result.err
 }
 
@@ -366,11 +366,11 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 		keyStr:     keyStr,
 	}
 
-	_, existed := i.getKeys[key]
+	_, existed := i.getKeys[keyStr]
 	if existed {
 		return state.returnFunc
 	}
-	i.getKeys[key] = getResultType[T]{}
+	i.getKeys[keyStr] = getResultType[T]{}
 
 	state.leaseGetFunc = i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
 
@@ -399,7 +399,7 @@ func (i *Item[T, K]) LowerSession() memproxy.Session {
 
 // Reset clear in-memory cached values
 func (i *Item[T, K]) Reset() {
-	i.getKeys = map[K]getResultType[T]{}
+	i.getKeys = map[string]getResultType[T]{}
 }
 
 // Stats ...
