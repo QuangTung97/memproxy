@@ -309,6 +309,32 @@ func TestMap_PropertyBased_Emtpy__Then_Multiple_Stocks(t *testing.T) {
 		Valid: true,
 		Data:  stock2,
 	}, result)
+
+	stats := mapCache.GetItemStats()
+	assert.Equal(t, uint64(0), stats.HitCount)
+	assert.Equal(t, uint64(1), stats.FillCount)
+
+	// =================================
+	// get again with cache hit
+	// =================================
+	mapCache = m.newMap(pipe)
+	fn1 = mapCache.Get(ctx, counter, newRootKey(sku2), newLocKeyHash(loc1))
+	fn2 = mapCache.Get(ctx, counter, newRootKey(sku2), newLocKeyHash(loc3))
+
+	result, err = fn1()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Option[stockLocation]{}, result)
+
+	result, err = fn2()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, Option[stockLocation]{
+		Valid: true,
+		Data:  stock2,
+	}, result)
+
+	stats = mapCache.GetItemStats()
+	assert.Equal(t, uint64(1), stats.HitCount)
+	assert.Equal(t, uint64(0), stats.FillCount)
 }
 
 func newStockHash(i int, loc int) stockLocation {
@@ -472,6 +498,11 @@ func TestMap_PropertyBased_SizeLog_To_1(t *testing.T) {
 		Valid: true,
 		Data:  stock10,
 	}, result)
+
+	stats := mapCache.GetItemStats()
+	assert.Equal(t, uint64(0), stats.HitCount)
+	assert.Equal(t, uint64(2), stats.FillCount)
+	assert.Equal(t, uint64(0), stats.FirstRejectedCount)
 }
 
 func TestMapPropertyTest_PutAndGetStocks(t *testing.T) {

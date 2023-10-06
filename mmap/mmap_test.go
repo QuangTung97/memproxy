@@ -904,3 +904,29 @@ func TestComputeBucketKeyString(t *testing.T) {
 		assert.Equal(t, "p/stocks/SKU01/4/8", s)
 	})
 }
+
+func TestComputeBucketKey_Hash_Diff_After_Size_Log(t *testing.T) {
+	t.Run("normal", func(t *testing.T) {
+		key1 := ComputeBucketKey[stockLocationRootKey, stockLocationKey](
+			4*8,
+			stockLocationRootKey{sku: sku1},
+			stockLocationKey{
+				loc:  loc1,
+				hash: newHash(0b1010_0000, 1),
+			},
+			":",
+		)
+		key2 := ComputeBucketKey[stockLocationRootKey, stockLocationKey](
+			4*8,
+			stockLocationRootKey{sku: sku1},
+			stockLocationKey{
+				loc:  loc1,
+				hash: newHash(0b1011_1111, 1),
+			},
+			":",
+		)
+		assert.Equal(t, newHash(0b1010_0000, 1), key2.Hash)
+		assert.Equal(t, key1.Hash, key2.Hash)
+		assert.Equal(t, true, key1 == key2)
+	})
+}
