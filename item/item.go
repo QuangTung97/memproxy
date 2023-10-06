@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"time"
+	"unsafe"
 
 	"github.com/QuangTung97/memproxy"
 )
@@ -226,33 +227,72 @@ type getResultType[T any] struct {
 	err  error
 }
 
+type handleFillState[T Value, K Key] struct {
+	getState *getState[T, K]
+	fillFn   func() (T, error)
+	cas      uint64
+}
+
+func handleFillStateCallback[T Value, K Key](obj unsafe.Pointer) {
+	s := (*handleFillState[T, K])(obj)
+	s.getState.handleLeaseGrantedFillFunc(s.fillFn, s.cas)
+}
+
+type executePipelineState struct {
+	pipe memproxy.Pipeline
+}
+
+func executePipelineCallback(obj unsafe.Pointer) {
+	s := (*executePipelineState)(obj)
+	s.pipe.Execute()
+}
+
+func newExecuteCallback(pipe memproxy.Pipeline) memproxy.CallbackFunc {
+	return memproxy.CallbackFunc{
+		Object: unsafe.Pointer(&executePipelineState{pipe: pipe}),
+		Func:   executePipelineCallback,
+	}
+}
+
+func (s *getState[T, K]) handleLeaseGrantedFillFunc(fillFn func() (T, error), cas uint64) {
+	fillResp, err := fillFn()
+
+	if err == ErrNotFound {
+		s.setResponse(fillResp)
+		s.it.pipeline.Delete(s.keyStr, memproxy.DeleteOptions{})
+		return
+	}
+
+	if err != nil {
+		s.setResponseError(err)
+		return
+	}
+
+	data, err := fillResp.Marshal()
+	if err != nil {
+		s.setResponseError(err)
+		return
+	}
+	s.setResponse(fillResp)
+
+	if cas > 0 {
+		_ = s.it.pipeline.LeaseSet(s.keyStr, data, cas, memproxy.LeaseSetOptions{})
+		s.it.sess.AddNextCall(newExecuteCallback(s.it.pipeline))
+	}
+}
+
 func (s *getState[T, K]) handleLeaseGranted(cas uint64) {
 	fillFn := s.it.filler(s.ctx, s.key)
-	s.it.sess.AddNextCall(func() {
-		fillResp, err := fillFn()
 
-		if err == ErrNotFound {
-			s.setResponse(fillResp)
-			s.it.pipeline.Delete(s.keyStr, memproxy.DeleteOptions{})
-			return
-		}
+	state := &handleFillState[T, K]{
+		getState: s,
+		fillFn:   fillFn,
+		cas:      cas,
+	}
 
-		if err != nil {
-			s.setResponseError(err)
-			return
-		}
-
-		data, err := fillResp.Marshal()
-		if err != nil {
-			s.setResponseError(err)
-			return
-		}
-		s.setResponse(fillResp)
-
-		if cas > 0 {
-			_ = s.it.pipeline.LeaseSet(s.keyStr, data, cas, memproxy.LeaseSetOptions{})
-			s.it.sess.AddNextCall(s.it.pipeline.Execute)
-		}
+	s.it.sess.AddNextCall(memproxy.CallbackFunc{
+		Object: unsafe.Pointer(state),
+		Func:   handleFillStateCallback[T, K],
 	})
 }
 
@@ -295,6 +335,31 @@ func (s *getState[T, K]) handleCacheError(err error) {
 	}
 }
 
+func getStateNextFuncCallback[T Value, K Key](obj unsafe.Pointer) {
+	s := (*getState[T, K])(obj)
+	s.nextFunc()
+}
+
+func newNextFuncCallback[T Value, K Key](s *getState[T, K]) memproxy.CallbackFunc {
+	return memproxy.CallbackFunc{
+		Object: unsafe.Pointer(s),
+		Func:   getStateNextFuncCallback[T, K],
+	}
+}
+
+func (s *getState[T, K]) leaseRejectedDelayHandler() {
+	s.retryCount++
+
+	s.leaseGetFunc = s.it.pipeline.LeaseGet(s.keyStr, memproxy.LeaseGetOptions{})
+
+	s.it.sess.AddNextCall(newNextFuncCallback(s))
+}
+
+func getStateDelayCallback[T Value, K Key](obj unsafe.Pointer) {
+	s := (*getState[T, K])(obj)
+	s.leaseRejectedDelayHandler()
+}
+
 func (s *getState[T, K]) nextFunc() {
 	leaseGetResp, err := s.leaseGetFunc()
 	if err != nil {
@@ -324,12 +389,13 @@ func (s *getState[T, K]) nextFunc() {
 		s.it.increaseRejectedCount(s.retryCount)
 
 		if s.retryCount < len(s.it.options.sleepDurations) {
-			s.it.sess.AddDelayedCall(s.it.options.sleepDurations[s.retryCount], func() {
-				s.retryCount++
-
-				s.leaseGetFunc = s.it.pipeline.LeaseGet(s.keyStr, memproxy.LeaseGetOptions{})
-				s.it.sess.AddNextCall(s.nextFunc)
-			})
+			s.it.sess.AddDelayedCall(
+				s.it.options.sleepDurations[s.retryCount],
+				memproxy.CallbackFunc{
+					Object: unsafe.Pointer(s),
+					Func:   getStateDelayCallback[T, K],
+				},
+			)
 			return
 		}
 
@@ -374,7 +440,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 
 	state.leaseGetFunc = i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
 
-	i.sess.AddNextCall(state.nextFunc)
+	i.sess.AddNextCall(newNextFuncCallback(state))
 
 	return state.returnFunc
 }

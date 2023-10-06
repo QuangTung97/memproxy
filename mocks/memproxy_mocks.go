@@ -483,10 +483,10 @@ var _ Session = &SessionMock{}
 //
 //		// make and configure a mocked Session
 //		mockedSession := &SessionMock{
-//			AddDelayedCallFunc: func(d time.Duration, fn func())  {
+//			AddDelayedCallFunc: func(d time.Duration, fn memproxy.CallbackFunc)  {
 //				panic("mock out the AddDelayedCall method")
 //			},
-//			AddNextCallFunc: func(fn func())  {
+//			AddNextCallFunc: func(fn memproxy.CallbackFunc)  {
 //				panic("mock out the AddNextCall method")
 //			},
 //			ExecuteFunc: func()  {
@@ -503,10 +503,10 @@ var _ Session = &SessionMock{}
 //	}
 type SessionMock struct {
 	// AddDelayedCallFunc mocks the AddDelayedCall method.
-	AddDelayedCallFunc func(d time.Duration, fn func())
+	AddDelayedCallFunc func(d time.Duration, fn memproxy.CallbackFunc)
 
 	// AddNextCallFunc mocks the AddNextCall method.
-	AddNextCallFunc func(fn func())
+	AddNextCallFunc func(fn memproxy.CallbackFunc)
 
 	// ExecuteFunc mocks the Execute method.
 	ExecuteFunc func()
@@ -521,12 +521,12 @@ type SessionMock struct {
 			// D is the d argument value.
 			D time.Duration
 			// Fn is the fn argument value.
-			Fn func()
+			Fn memproxy.CallbackFunc
 		}
 		// AddNextCall holds details about calls to the AddNextCall method.
 		AddNextCall []struct {
 			// Fn is the fn argument value.
-			Fn func()
+			Fn memproxy.CallbackFunc
 		}
 		// Execute holds details about calls to the Execute method.
 		Execute []struct {
@@ -542,13 +542,13 @@ type SessionMock struct {
 }
 
 // AddDelayedCall calls AddDelayedCallFunc.
-func (mock *SessionMock) AddDelayedCall(d time.Duration, fn func()) {
+func (mock *SessionMock) AddDelayedCall(d time.Duration, fn memproxy.CallbackFunc) {
 	if mock.AddDelayedCallFunc == nil {
 		panic("SessionMock.AddDelayedCallFunc: method is nil but Session.AddDelayedCall was just called")
 	}
 	callInfo := struct {
 		D  time.Duration
-		Fn func()
+		Fn memproxy.CallbackFunc
 	}{
 		D:  d,
 		Fn: fn,
@@ -565,11 +565,11 @@ func (mock *SessionMock) AddDelayedCall(d time.Duration, fn func()) {
 //	len(mockedSession.AddDelayedCallCalls())
 func (mock *SessionMock) AddDelayedCallCalls() []struct {
 	D  time.Duration
-	Fn func()
+	Fn memproxy.CallbackFunc
 } {
 	var calls []struct {
 		D  time.Duration
-		Fn func()
+		Fn memproxy.CallbackFunc
 	}
 	mock.lockAddDelayedCall.RLock()
 	calls = mock.calls.AddDelayedCall
@@ -578,12 +578,12 @@ func (mock *SessionMock) AddDelayedCallCalls() []struct {
 }
 
 // AddNextCall calls AddNextCallFunc.
-func (mock *SessionMock) AddNextCall(fn func()) {
+func (mock *SessionMock) AddNextCall(fn memproxy.CallbackFunc) {
 	if mock.AddNextCallFunc == nil {
 		panic("SessionMock.AddNextCallFunc: method is nil but Session.AddNextCall was just called")
 	}
 	callInfo := struct {
-		Fn func()
+		Fn memproxy.CallbackFunc
 	}{
 		Fn: fn,
 	}
@@ -598,10 +598,10 @@ func (mock *SessionMock) AddNextCall(fn func()) {
 //
 //	len(mockedSession.AddNextCallCalls())
 func (mock *SessionMock) AddNextCallCalls() []struct {
-	Fn func()
+	Fn memproxy.CallbackFunc
 } {
 	var calls []struct {
-		Fn func()
+		Fn memproxy.CallbackFunc
 	}
 	mock.lockAddNextCall.RLock()
 	calls = mock.calls.AddNextCall
