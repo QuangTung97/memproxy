@@ -836,7 +836,7 @@ func TestComputeSizeLog(t *testing.T) {
 
 func TestComputeBucketKeyString(t *testing.T) {
 	t.Run("normal", func(t *testing.T) {
-		s := ComputeBucketKeyString(
+		s := ComputeBucketKeyStringWithSeparator(
 			70,
 			stockLocationRootKey{
 				sku: "SKU01",
@@ -850,7 +850,7 @@ func TestComputeBucketKeyString(t *testing.T) {
 	})
 
 	t.Run("at bound of the first part", func(t *testing.T) {
-		s := ComputeBucketKeyString(
+		s := ComputeBucketKeyStringWithSeparator(
 			70,
 			stockLocationRootKey{
 				sku: "SKU01",
@@ -862,7 +862,7 @@ func TestComputeBucketKeyString(t *testing.T) {
 		)
 		assert.Equal(t, "p/stocks/SKU01/5/10", s)
 
-		s = ComputeBucketKeyString(
+		s = ComputeBucketKeyStringWithSeparator(
 			70,
 			stockLocationRootKey{
 				sku: "SKU01",
@@ -878,7 +878,7 @@ func TestComputeBucketKeyString(t *testing.T) {
 	t.Run("middle of size log = 4", func(t *testing.T) {
 		const elemCount = 96
 
-		s := ComputeBucketKeyString(
+		s := ComputeBucketKeyStringWithSeparator(
 			elemCount,
 			stockLocationRootKey{
 				sku: "SKU01",
@@ -890,7 +890,7 @@ func TestComputeBucketKeyString(t *testing.T) {
 		)
 		assert.Equal(t, "p/stocks/SKU01/5/78", s)
 
-		s = ComputeBucketKeyString(
+		s = ComputeBucketKeyStringWithSeparator(
 			elemCount,
 			stockLocationRootKey{
 				sku: "SKU01",

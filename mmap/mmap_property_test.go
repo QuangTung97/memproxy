@@ -2,6 +2,7 @@ package mmap
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sync"
 	"testing"
@@ -31,8 +32,9 @@ type mapPropertyTest struct {
 
 	mut sync.Mutex
 
-	stockMap   map[primaryKey]stockLocation
-	stockIndex *btree.BTreeG[indexKey]
+	stockMap      map[primaryKey]stockLocation
+	stockCounters map[string]uint64
+	stockIndex    *btree.BTreeG[indexKey]
 }
 
 func indexKeyLess(a, b indexKey) bool {
@@ -57,8 +59,9 @@ func newMapPropertyTest(
 	return &mapPropertyTest{
 		mc: newMemcacheWithProxy(t),
 
-		stockMap:   make(map[primaryKey]stockLocation),
-		stockIndex: btree.NewG[indexKey](3, indexKeyLess),
+		stockMap:      make(map[primaryKey]stockLocation),
+		stockCounters: map[string]uint64{},
+		stockIndex:    btree.NewG[indexKey](3, indexKeyLess),
 	}
 }
 
@@ -87,6 +90,8 @@ func (m *mapPropertyTest) putStock(stock stockLocation) {
 			loc:     prev.Location,
 		}
 		m.stockIndex.Delete(prevIndex)
+	} else {
+		m.stockCounters[primary.rootKey.sku] = m.stockCounters[primary.rootKey.sku] + 1
 	}
 
 	index := indexKey{
@@ -98,7 +103,32 @@ func (m *mapPropertyTest) putStock(stock stockLocation) {
 
 	m.stockMap[primary] = stock
 
+	newCounter := m.stockCounters[primary.rootKey.sku]
+
 	m.mut.Unlock()
+
+	pipe := m.mc.Pipeline(context.Background())
+	defer pipe.Finish()
+
+	cacheKey := ComputeBucketKeyString[stockLocationRootKey, stockLocationKey](
+		newCounter,
+		stock.getRootKey(),
+		stock.getKey(),
+	)
+	fmt.Println(cacheKey)
+
+	fn := pipe.Delete(cacheKey, memproxy.DeleteOptions{})
+	_, err := fn()
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (m *mapPropertyTest) getCounter(rootKey stockLocationRootKey) uint64 {
+	m.mut.Lock()
+	defer m.mut.Unlock()
+
+	return m.stockCounters[rootKey.sku]
 }
 
 func (m *mapPropertyTest) getStocksByHashes(
@@ -224,6 +254,11 @@ func TestMapPropertyTest_PutAndGetStocks(t *testing.T) {
 		m.putStock(stock2)
 		m.putStock(stock3)
 
+		assert.Equal(t, map[string]uint64{
+			"SKU01": 2,
+			"SKU02": 1,
+		}, m.stockCounters)
+
 		resetStockHash(&stock1)
 		resetStockHash(&stock2)
 		resetStockHash(&stock3)
@@ -313,6 +348,7 @@ func TestMapPropertyTest_PutStock(t *testing.T) {
 		m := newMapPropertyTest(t)
 		assert.Equal(t, 0, len(m.stockMap))
 		assert.Equal(t, 0, m.stockIndex.Len())
+		assert.Equal(t, 0, len(m.stockCounters))
 	})
 
 	t.Run("single", func(t *testing.T) {
@@ -335,6 +371,10 @@ func TestMapPropertyTest_PutStock(t *testing.T) {
 				loc: "LOC01",
 			}: stock1,
 		}, m.stockMap)
+
+		assert.Equal(t, map[string]uint64{
+			"SKU01": 1,
+		}, m.stockCounters)
 
 		assert.Equal(t, 1, m.stockIndex.Len())
 
@@ -364,6 +404,10 @@ func TestMapPropertyTest_PutStock(t *testing.T) {
 				loc: "LOC01",
 			}: stock1,
 		}, m.stockMap)
+
+		assert.Equal(t, map[string]uint64{
+			"SKU01": 1,
+		}, m.stockCounters)
 
 		assert.Equal(t, 1, m.stockIndex.Len())
 
