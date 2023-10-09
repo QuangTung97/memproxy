@@ -2,6 +2,7 @@ package mhash
 
 import (
 	"context"
+
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/item"
 )
@@ -285,9 +286,9 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 		if withUpdate {
 			nextCallFn(true)
 		} else {
-			u.sess.AddNextCall(func() {
+			u.sess.AddNextCall(memproxy.NewEmptyCallback(func() {
 				nextCallFn(false)
-			})
+			}))
 		}
 	}
 
@@ -367,13 +368,13 @@ func (u *HashUpdater[T, R, K]) UpsertBucket(
 
 	callCtx.doComputeFn()
 
-	u.lowerSession.AddNextCall(func() {
+	u.lowerSession.AddNextCall(memproxy.NewEmptyCallback(func() {
 		callCtx = callContext{}
 		callCtx.doComputeFn = func() {
 			doComputeWithUpdate(true)
 		}
 		callCtx.doComputeFn()
-	})
+	}))
 
 	return func() error {
 		u.execute()
@@ -404,9 +405,9 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 		if withUpdate {
 			nextCallFn(true)
 		} else {
-			u.sess.AddNextCall(func() {
+			u.sess.AddNextCall(memproxy.NewEmptyCallback(func() {
 				nextCallFn(false)
-			})
+			}))
 		}
 	}
 
@@ -448,7 +449,7 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 
 	callCtx.doComputeFn()
 
-	u.lowerSession.AddNextCall(func() {
+	u.lowerSession.AddNextCall(memproxy.NewEmptyCallback(func() {
 		// clear state
 		callCtx = callContext{}
 		scannedBuckets = scannedBuckets[:0]
@@ -457,7 +458,7 @@ func (u *HashUpdater[T, R, K]) DeleteBucket(
 			doComputeWithUpdate(true)
 		}
 		callCtx.doComputeFn()
-	})
+	}))
 
 	return func() error {
 		u.execute()

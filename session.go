@@ -70,7 +70,7 @@ func newSession(
 
 type sessionImpl struct {
 	provider  *sessionProviderImpl
-	nextCalls []func()
+	nextCalls []CallbackFunc
 	heap      delayedCallHeap
 
 	isDirty bool // an optimization
@@ -81,7 +81,7 @@ type sessionImpl struct {
 
 type delayedCall struct {
 	startedAt time.Time
-	call      func()
+	call      CallbackFunc
 }
 
 var _ Session = &sessionImpl{}
@@ -97,16 +97,16 @@ func setDirtyRecursive(s *sessionImpl) {
 }
 
 // AddNextCall ...
-func (s *sessionImpl) AddNextCall(fn func()) {
+func (s *sessionImpl) AddNextCall(fn CallbackFunc) {
 	setDirtyRecursive(s)
 	if s.nextCalls == nil {
-		s.nextCalls = make([]func(), 0, 32)
+		s.nextCalls = make([]CallbackFunc, 0, 32)
 	}
 	s.nextCalls = append(s.nextCalls, fn)
 }
 
 // AddDelayedCall ...
-func (s *sessionImpl) AddDelayedCall(d time.Duration, fn func()) {
+func (s *sessionImpl) AddDelayedCall(d time.Duration, fn CallbackFunc) {
 	setDirtyRecursive(s)
 	s.heap.push(delayedCall{
 		startedAt: s.provider.nowFn().Add(d),
@@ -149,7 +149,7 @@ func (s *sessionImpl) executeNextCalls() {
 		nextCalls := s.nextCalls
 		s.nextCalls = nil
 		for _, call := range nextCalls {
-			call()
+			call.Call()
 		}
 	}
 }
@@ -170,7 +170,7 @@ MainLoop:
 				continue MainLoop
 			}
 			s.heap.pop()
-			top.call()
+			top.call.Call()
 		}
 	}
 }

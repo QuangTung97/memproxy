@@ -3,6 +3,7 @@ package memproxy
 import (
 	"context"
 	"time"
+	"unsafe"
 )
 
 // Memcache represents a generic Memcache interface
@@ -62,10 +63,31 @@ type SessionProvider interface {
 	New() Session
 }
 
+// CallbackFunc for session
+type CallbackFunc struct {
+	Object unsafe.Pointer
+	Func   func(obj unsafe.Pointer)
+}
+
+// Call ...
+func (f CallbackFunc) Call() {
+	f.Func(f.Object)
+}
+
+// NewEmptyCallback creates CallbackFunc from empty args function
+func NewEmptyCallback(fn func()) CallbackFunc {
+	return CallbackFunc{
+		Object: nil,
+		Func: func(_ unsafe.Pointer) {
+			fn()
+		},
+	}
+}
+
 // Session controlling session values & delayed tasks, this object is NOT Thread Safe
 type Session interface {
-	AddNextCall(fn func())
-	AddDelayedCall(d time.Duration, fn func())
+	AddNextCall(fn CallbackFunc)
+	AddDelayedCall(d time.Duration, fn CallbackFunc)
 	Execute()
 
 	GetLower() Session

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"unsafe"
 
 	"github.com/QuangTung97/go-memcache/memcache"
 
@@ -201,6 +202,11 @@ type leaseGetState struct {
 	err  error
 }
 
+func retryOnOtherNodeCallback(obj unsafe.Pointer) {
+	s := (*leaseGetState)(obj)
+	s.retryOnOtherNode()
+}
+
 func (s *leaseGetState) retryOnOtherNode() {
 	s.pipe.doExecuteForAllServers()
 
@@ -210,6 +216,11 @@ func (s *leaseGetState) retryOnOtherNode() {
 	if s.err == nil {
 		s.pipe.setKeyForLeaseSet(s.key, s.resp, s.serverID)
 	}
+}
+
+func leaseGetStateNextFuncCallback(obj unsafe.Pointer) {
+	s := (*leaseGetState)(obj)
+	s.nextFunc()
 }
 
 func (s *leaseGetState) nextFunc() {
@@ -229,7 +240,11 @@ func (s *leaseGetState) nextFunc() {
 		pipe := s.pipe.getRoutePipeline(s.serverID)
 		s.fn = pipe.LeaseGet(s.key, s.options)
 
-		s.pipe.sess.AddNextCall(s.retryOnOtherNode)
+		s.pipe.sess.AddNextCall(memproxy.CallbackFunc{
+			Object: unsafe.Pointer(s),
+			Func:   retryOnOtherNodeCallback,
+		})
+
 		return
 	}
 
@@ -266,7 +281,10 @@ func (p *Pipeline) LeaseGet(
 		fn: fn,
 	}
 
-	p.sess.AddNextCall(state.nextFunc)
+	p.sess.AddNextCall(memproxy.CallbackFunc{
+		Object: unsafe.Pointer(state),
+		Func:   leaseGetStateNextFuncCallback,
+	})
 	return state
 }
 

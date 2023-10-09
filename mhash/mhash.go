@@ -5,9 +5,10 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"math"
+
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/item"
-	"math"
 )
 
 // ErrHashTooDeep when too many levels to go to
@@ -196,7 +197,7 @@ func (h *Hash[T, R, K]) Get(ctx context.Context, rootKey R, key K) func() (Null[
 			Level:   callCtx.level,
 			Hash:    computeHashAtLevel(keyHash, callCtx.level),
 		})
-		h.sess.AddNextCall(nextCallFn)
+		h.sess.AddNextCall(memproxy.NewEmptyCallback(nextCallFn))
 	}
 
 	callCtx.doComputeFn = doGetFn

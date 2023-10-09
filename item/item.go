@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"time"
+	"unsafe"
 
 	"github.com/QuangTung97/go-memcache/memcache"
 
@@ -223,6 +224,20 @@ type Item[T Value, K Key] struct {
 	stats Stats
 }
 
+func (i *Item[T, K]) addNextCall(fn func(obj unsafe.Pointer)) {
+	i.sess.AddNextCall(memproxy.CallbackFunc{
+		Object: nil,
+		Func:   fn,
+	})
+}
+
+func (i *Item[T, K]) addDelayedCall(d time.Duration, fn func(obj unsafe.Pointer)) {
+	i.sess.AddDelayedCall(d, memproxy.CallbackFunc{
+		Object: nil,
+		Func:   fn,
+	})
+}
+
 type getResultType[T any] struct {
 	resp T
 	err  error
@@ -230,7 +245,7 @@ type getResultType[T any] struct {
 
 func (s *getState[T, K]) handleLeaseGranted(cas uint64) {
 	fillFn := s.it.filler(s.ctx, s.key)
-	s.it.sess.AddNextCall(func() {
+	s.it.addNextCall(func(_ unsafe.Pointer) {
 		fillResp, err := fillFn()
 
 		if err == ErrNotFound {
@@ -253,7 +268,9 @@ func (s *getState[T, K]) handleLeaseGranted(cas uint64) {
 
 		if cas > 0 {
 			_ = s.it.pipeline.LeaseSet(s.keyStr, data, cas, memproxy.LeaseSetOptions{})
-			s.it.sess.AddNextCall(s.it.pipeline.Execute)
+			s.it.addNextCall(func(obj unsafe.Pointer) {
+				s.it.pipeline.Execute()
+			})
 		}
 	})
 }
@@ -298,7 +315,7 @@ func (s *getState[T, K]) handleCacheError(err error) {
 	}
 }
 
-func (s *getState[T, K]) nextFunc() {
+func (s *getState[T, K]) nextFunc(_ unsafe.Pointer) {
 	leaseGetResp, err := s.leaseGetResult.Result()
 
 	s.leaseGetResult = nil
@@ -333,11 +350,11 @@ func (s *getState[T, K]) nextFunc() {
 		s.it.increaseRejectedCount(s.retryCount)
 
 		if s.retryCount < len(s.it.options.sleepDurations) {
-			s.it.sess.AddDelayedCall(s.it.options.sleepDurations[s.retryCount], func() {
+			s.it.addDelayedCall(s.it.options.sleepDurations[s.retryCount], func(_ unsafe.Pointer) {
 				s.retryCount++
 
 				s.leaseGetResult = s.it.pipeline.LeaseGet(s.keyStr, memproxy.LeaseGetOptions{})
-				s.it.sess.AddNextCall(s.nextFunc)
+				s.it.addNextCall(s.nextFunc)
 			})
 			return
 		}
@@ -383,7 +400,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 
 	state.leaseGetResult = i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
 
-	i.sess.AddNextCall(state.nextFunc)
+	i.addNextCall(state.nextFunc)
 
 	return state.returnFunc
 }

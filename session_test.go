@@ -1,9 +1,10 @@
 package memproxy
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type sessionTest struct {
@@ -57,11 +58,11 @@ func newCallMock() *callMock {
 	}
 }
 
-func (m *callMock) get() func() {
-	return func() {
+func (m *callMock) get() CallbackFunc {
+	return NewEmptyCallback(func() {
 		m.count++
 		m.fn()
-	}
+	})
 }
 
 func TestSessionAddNextCall(t *testing.T) {
