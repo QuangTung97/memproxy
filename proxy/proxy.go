@@ -239,7 +239,12 @@ func (s *leaseGetState) nextFunc() {
 func (s *leaseGetState) Result() (memproxy.LeaseGetResponse, error) {
 	s.pipe.sess.Execute()
 	s.pipe.selector.Reset()
-	return s.resp, s.err
+
+	resp, err := s.resp, s.err
+
+	putLeaseGetState(s)
+
+	return resp, err
 }
 
 // LeaseGet ...
@@ -251,7 +256,8 @@ func (p *Pipeline) LeaseGet(
 	pipe := p.getRoutePipeline(serverID)
 	fn := pipe.LeaseGet(key, options)
 
-	state := &leaseGetState{
+	state := getLeaseGetState()
+	*state = leaseGetState{
 		pipe:     p,
 		serverID: serverID,
 		key:      key,
