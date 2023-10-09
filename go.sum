@@ -5,8 +5,8 @@ github.com/BurntSushi/toml v1.2.1 h1:9F2/+DoOYIOksmaJFPw1tGFy1eDnIJXg+UHjuD8lTak
 github.com/BurntSushi/toml v1.2.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/GoogleCloudPlatform/cloudsql-proxy v0.0.0-20190129172621-c8b1d7a94ddf/go.mod h1:aJ4qN3TfrelA6NZ6AXsXRfmEVaYin3EDbSPJrKS8OXo=
-github.com/QuangTung97/go-memcache v1.1.1-0.20231009064511-4f8302dc7878 h1:lsuqm/3HYytjRogPD7+rHPnWM5DfFlHM7XRxW23aRNg=
-github.com/QuangTung97/go-memcache v1.1.1-0.20231009064511-4f8302dc7878/go.mod h1:bInH+oopFx83sRE0DaLVuXc6t3c6DsapM3Y7B7IUpOg=
+github.com/QuangTung97/go-memcache v1.1.1-0.20231009065705-62d0f55230d4 h1:7y9MAYf1NhE157pmO0rO587EGgrdOaMcHPC6nspNnWI=
+github.com/QuangTung97/go-memcache v1.1.1-0.20231009065705-62d0f55230d4/go.mod h1:bInH+oopFx83sRE0DaLVuXc6t3c6DsapM3Y7B7IUpOg=
 github.com/aclements/go-gg v0.0.0-20170118225347-6dbb4e4fefb0/go.mod h1:55qNq4vcpkIuHowELi5C8e+1yUHtoLoOUR9QU5j7Tes=
 github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794 h1:xlwdaKcTNVW4PtpQb8aKA4Pjy0CdJHEqvFbAnvR5m2g=
 github.com/aclements/go-moremath v0.0.0-20210112150236-f10218a38794/go.mod h1:7e+I0LQFUI9AXWxOfsQROs9xPhoJtbsyWcjJqDd4KPY=
