@@ -6,6 +6,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/QuangTung97/go-memcache/memcache"
+
 	"github.com/QuangTung97/memproxy"
 )
 
@@ -307,6 +309,9 @@ func (s *getState[T, K]) nextFunc() {
 		s.it.stats.TotalBytesRecv += uint64(len(leaseGetResp.Data))
 
 		resp, err := s.it.unmarshaler(leaseGetResp.Data)
+
+		memcache.ReleaseGetResponseData(leaseGetResp.Data)
+
 		if err != nil {
 			s.setResponseError(err)
 			return
