@@ -82,7 +82,7 @@ func doGetMapElemFromMemcache(mc memproxy.Memcache, numKeys int) {
 	}
 }
 
-func Benchmark_Proxy__Map_Get_Batch_100(b *testing.B) {
+func BenchmarkWithProxy__Map_Get_Batch_100(b *testing.B) {
 	mc := newMemcacheWithProxy(b)
 
 	const numKeys = 100
@@ -96,7 +96,7 @@ func Benchmark_Proxy__Map_Get_Batch_100(b *testing.B) {
 	}
 }
 
-func Benchmark_Proxy__Map_Get_Batch_1000(b *testing.B) {
+func BenchmarkWithProxy__Map_Get_Batch_1000(b *testing.B) {
 	mc := newMemcacheWithProxy(b)
 
 	const numKeys = 1000
@@ -110,7 +110,7 @@ func Benchmark_Proxy__Map_Get_Batch_1000(b *testing.B) {
 	}
 }
 
-func Benchmark_ComputeBucketKeyString(b *testing.B) {
+func BenchmarkComputeBucketKeyString(b *testing.B) {
 	var sum int
 	for n := 0; n < b.N; n++ {
 		k := BucketKey[benchRootKey]{
