@@ -15,9 +15,27 @@ type Memcache interface {
 	Close() error
 }
 
+// LeaseGetResult is the response of LeaseGet, method Result MUST only be called Once.
+// Calling Result more than once is undefined behaviour
+type LeaseGetResult interface {
+	Result() (LeaseGetResponse, error)
+}
+
+// LeaseGetErrorResult for error only result
+type LeaseGetErrorResult struct {
+	Error error
+}
+
+// Result ...
+func (r LeaseGetErrorResult) Result() (LeaseGetResponse, error) {
+	return LeaseGetResponse{}, r.Error
+}
+
 // Pipeline represents a generic Pipeline
 type Pipeline interface {
-	LeaseGet(key string, options LeaseGetOptions) func() (LeaseGetResponse, error)
+	// LeaseGet should not be used directly, use the item or mmap package instead
+	LeaseGet(key string, options LeaseGetOptions) LeaseGetResult
+
 	LeaseSet(key string, data []byte, cas uint64, options LeaseSetOptions) func() (LeaseSetResponse, error)
 	Delete(key string, options DeleteOptions) func() (DeleteResponse, error)
 
