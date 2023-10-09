@@ -2,6 +2,7 @@ package memproxy
 
 import (
 	"context"
+
 	"github.com/QuangTung97/go-memcache/memcache"
 )
 
@@ -90,12 +91,20 @@ func (p *plainPipelineImpl) LowerSession() Session {
 
 // LeaseGet ...
 func (p *plainPipelineImpl) LeaseGet(key string, _ LeaseGetOptions) func() (LeaseGetResponse, error) {
-	fn := p.pipeline.MGet(key, memcache.MGetOptions{
+	result, getErr := p.pipeline.MGetFast(key, memcache.MGetOptions{
 		N:   p.leaseDuration,
 		CAS: true,
 	})
+	if getErr != nil {
+		return func() (LeaseGetResponse, error) {
+			return LeaseGetResponse{}, getErr
+		}
+	}
+
 	return func() (LeaseGetResponse, error) {
-		mgetResp, err := fn()
+		mgetResp, err := result.Result()
+		memcache.ReleaseMGetResult(result)
+
 		if err != nil {
 			return LeaseGetResponse{}, err
 		}

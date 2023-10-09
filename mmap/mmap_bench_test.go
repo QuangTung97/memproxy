@@ -3,6 +3,8 @@ package mmap
 import (
 	"context"
 	"encoding/binary"
+	"os"
+	"runtime/pprof"
 	"strconv"
 	"testing"
 
@@ -108,6 +110,23 @@ func Benchmark_Proxy__Map_Get_Batch_1000(b *testing.B) {
 	}
 }
 
+func Benchmark_ComputeBucketKeyString(b *testing.B) {
+	var sum int
+	for n := 0; n < b.N; n++ {
+		k := BucketKey[benchRootKey]{
+			RootKey: benchRootKey{
+				value: 23,
+			},
+			SizeLog: 7,
+			Hash:    newHash(0x1234, 2),
+			Sep:     ":",
+		}.String()
+		sum += len(k)
+	}
+	b.StopTimer()
+	writeMemProfile()
+}
+
 func (v benchValue) getKey() benchKey {
 	return v.key
 }
@@ -166,4 +185,26 @@ func TestMarshalBenchValue(t *testing.T) {
 	newVal, err := unmarshalBenchValue(data)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, b, newVal)
+}
+
+func writeMemProfile() {
+	if os.Getenv("ENABLE_BENCH_PROFILE") == "" {
+		return
+	}
+
+	file, err := os.Create("./bench_profile.out")
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		err := file.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	err = pprof.WriteHeapProfile(file)
+	if err != nil {
+		panic(err)
+	}
 }

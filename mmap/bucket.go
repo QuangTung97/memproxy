@@ -7,7 +7,6 @@ import (
 	"errors"
 	"math"
 	"strconv"
-	"strings"
 
 	"github.com/QuangTung97/memproxy/item"
 )
@@ -24,16 +23,20 @@ type BucketKey[R RootKey] struct {
 func (k BucketKey[R]) String() string {
 	rootKey := k.RootKey.String()
 
-	var buf strings.Builder
+	// 2 bytes for size log
+	// 8 bytes for hash value => can contain 4 byte uint32
+	// 2 bytes for separator
+	// 116 bytes for key length
+	var tmpBuf [128]byte
+	result := tmpBuf[:0]
 
-	// 2 byte for size log
-	// 8 byte for hash value => can contain 4 byte uint32
-	buf.Grow(len(rootKey) + 2*len(k.Sep) + 10)
+	result = append(result, rootKey...)
+	result = append(result, k.Sep...)
 
-	_, _ = buf.WriteString(rootKey)
-	_, _ = buf.WriteString(k.Sep)
-	_, _ = buf.WriteString(strconv.FormatInt(int64(k.SizeLog), 10))
-	_, _ = buf.WriteString(k.Sep)
+	sizeLogNum := strconv.FormatInt(int64(k.SizeLog), 10)
+	result = append(result, sizeLogNum...)
+
+	result = append(result, k.Sep...)
 
 	hash := k.Hash & (math.MaxUint64 << (64 - k.SizeLog))
 
@@ -48,9 +51,8 @@ func (k BucketKey[R]) String() string {
 		hexStr = hexStr[:len(hexStr)-1]
 	}
 
-	_, _ = buf.WriteString(hexStr)
-
-	return buf.String()
+	result = append(result, hexStr...)
+	return string(result)
 }
 
 // GetHashRange ...
