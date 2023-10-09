@@ -676,3 +676,22 @@ func TestSession_Lower_Priority_AddNextCall__Run_On_Lowest_Priority(t *testing.T
 
 	assert.Equal(t, []int{11}, calls)
 }
+
+func TestEmpty(t *testing.T) {
+	calls := 0
+	fn := LeaseGetResultFunc(func() (LeaseGetResponse, error) {
+		calls++
+		return LeaseGetResponse{
+			CAS: 123,
+		}, nil
+	})
+
+	resp, err := fn.Result()
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, LeaseGetResponse{
+		CAS: 123,
+	}, resp)
+
+	assert.Equal(t, 1, calls)
+}

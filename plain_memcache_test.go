@@ -328,3 +328,30 @@ func TestPlainMemcache__With_Existing_Session(t *testing.T) {
 
 	assert.Same(t, sess.GetLower(), pipe.LowerSession())
 }
+
+func TestPlainMemcache__Invalid_Key(t *testing.T) {
+	client, err := memcache.New("localhost:11211", 1)
+	if err != nil {
+		panic(err)
+	}
+	t.Cleanup(func() {
+		_ = client.Close()
+	})
+
+	err = client.Pipeline().FlushAll()()
+	if err != nil {
+		panic(err)
+	}
+
+	cache := NewPlainMemcache(client,
+		WithPlainMemcacheLeaseDuration(7),
+		WithPlainMemcacheSessionProvider(NewSessionProvider()),
+	)
+
+	pipe := cache.Pipeline(context.Background())
+	fn := pipe.LeaseGet(" abcd ", LeaseGetOptions{})
+
+	resp, err := fn.Result()
+	assert.Equal(t, memcache.ErrInvalidKeyFormat, err)
+	assert.Equal(t, LeaseGetResponse{}, resp)
+}
