@@ -2,10 +2,11 @@ package memproxy
 
 import (
 	"context"
-	"github.com/QuangTung97/go-memcache/memcache"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/QuangTung97/go-memcache/memcache"
+	"github.com/stretchr/testify/assert"
 )
 
 type plainMemcacheTest struct {
@@ -39,7 +40,7 @@ func TestPlainMemcache_LeaseGet_Granted_And_LeaseSet__Then_LeaseGet_Found(t *tes
 	const key = "key01"
 
 	// Lease Get
-	leaseGetResp, err := m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err := m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 
 	cas := leaseGetResp.CAS
@@ -61,7 +62,7 @@ func TestPlainMemcache_LeaseGet_Granted_And_LeaseSet__Then_LeaseGet_Found(t *tes
 	}, setResp)
 
 	// Lease Get Again
-	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, LeaseGetResponse{
 		Status: LeaseGetStatusFound,
@@ -70,7 +71,7 @@ func TestPlainMemcache_LeaseGet_Granted_And_LeaseSet__Then_LeaseGet_Found(t *tes
 	}, leaseGetResp)
 
 	// Get Again
-	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 
 	leaseGetResp.CAS = 1
@@ -87,7 +88,7 @@ func TestPlainMemcache_LeaseGet_Rejected(t *testing.T) {
 	const key = "key01"
 
 	// Lease Get
-	leaseGetResp, err := m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err := m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 
 	cas := leaseGetResp.CAS
@@ -100,7 +101,7 @@ func TestPlainMemcache_LeaseGet_Rejected(t *testing.T) {
 	assert.Greater(t, cas, uint64(0))
 
 	// Lease Get Rejected
-	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, LeaseGetResponse{
 		Status: LeaseGetStatusLeaseRejected,
@@ -116,7 +117,7 @@ func TestPlainMemcache_LeaseGet_Rejected(t *testing.T) {
 	}, setResp)
 
 	// Lease Get Again
-	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, LeaseGetResponse{
 		Status: LeaseGetStatusFound,
@@ -131,7 +132,7 @@ func TestPlainMemcache_LeaseSet_After_Delete__Rejected(t *testing.T) {
 	const key = "key01"
 
 	// Lease Get
-	leaseGetResp, err := m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err := m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 
 	cas := leaseGetResp.CAS
@@ -156,7 +157,7 @@ func TestPlainMemcache_LeaseSet_After_Delete__Rejected(t *testing.T) {
 	}, setResp)
 
 	// Lease Get Again
-	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, LeaseGetResponse{
 		Status: LeaseGetStatusLeaseGranted,
@@ -170,7 +171,7 @@ func TestPlainMemcache_LeaseGet_After_Delete(t *testing.T) {
 	const key = "key01"
 
 	// Lease Get
-	leaseGetResp, err := m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err := m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 
 	cas := leaseGetResp.CAS
@@ -192,7 +193,7 @@ func TestPlainMemcache_LeaseGet_After_Delete(t *testing.T) {
 	}, setResp)
 
 	// Lease Get Again
-	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, LeaseGetResponse{
 		Status: LeaseGetStatusFound,
@@ -205,7 +206,7 @@ func TestPlainMemcache_LeaseGet_After_Delete(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, DeleteResponse{}, deleteResp)
 
-	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{})()
+	leaseGetResp, err = m.pipe.LeaseGet(key, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, LeaseGetResponse{
 		Status: LeaseGetStatusLeaseGranted,
@@ -223,7 +224,7 @@ func TestPlainMemcache__Lease_Get__Pipeline(t *testing.T) {
 	fn1 := m1.pipe.LeaseGet(key1, LeaseGetOptions{})
 	fn2 := m1.pipe.LeaseGet(key2, LeaseGetOptions{})
 
-	getResp, err := m2.pipe.LeaseGet(key1, LeaseGetOptions{})()
+	getResp, err := m2.pipe.LeaseGet(key1, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 
 	cas := getResp.CAS
@@ -236,13 +237,13 @@ func TestPlainMemcache__Lease_Get__Pipeline(t *testing.T) {
 	}, getResp)
 
 	// After Do Flush Pipeline
-	getResp, err = fn1()
+	getResp, err = fn1.Result()
 	assert.Equal(t, LeaseGetResponse{
 		Status: LeaseGetStatusLeaseRejected,
 		CAS:    cas,
 	}, getResp)
 
-	getResp, err = fn2()
+	getResp, err = fn2.Result()
 	assert.Equal(t, LeaseGetResponse{
 		Status: LeaseGetStatusLeaseGranted,
 		CAS:    cas + 1,
@@ -262,7 +263,7 @@ func TestPlainMemcache__Lease_Get_Then_Execute(t *testing.T) {
 	m1.pipe.Execute()
 	time.Sleep(10 * time.Millisecond)
 
-	getResp, err := m2.pipe.LeaseGet(key1, LeaseGetOptions{})()
+	getResp, err := m2.pipe.LeaseGet(key1, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 
 	cas := getResp.CAS
@@ -281,7 +282,7 @@ func TestPlainMemcache__Finish_Do_Flush(t *testing.T) {
 
 	const key1 = "key01"
 
-	getResp, err := m1.pipe.LeaseGet(key1, LeaseGetOptions{})()
+	getResp, err := m1.pipe.LeaseGet(key1, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, LeaseGetStatusLeaseGranted, getResp.Status)
 
@@ -292,7 +293,7 @@ func TestPlainMemcache__Finish_Do_Flush(t *testing.T) {
 
 	m1.pipe.Finish()
 
-	getResp, err = m2.pipe.LeaseGet(key1, LeaseGetOptions{})()
+	getResp, err = m2.pipe.LeaseGet(key1, LeaseGetOptions{}).Result()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, LeaseGetResponse{
 		Status: LeaseGetStatusFound,

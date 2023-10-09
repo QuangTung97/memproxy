@@ -138,7 +138,7 @@ var _ Pipeline = &PipelineMock{}
 //			FinishFunc: func()  {
 //				panic("mock out the Finish method")
 //			},
-//			LeaseGetFunc: func(key string, options memproxy.LeaseGetOptions) func() (memproxy.LeaseGetResponse, error) {
+//			LeaseGetFunc: func(key string, options memproxy.LeaseGetOptions) memproxy.LeaseGetResult {
 //				panic("mock out the LeaseGet method")
 //			},
 //			LeaseSetFunc: func(key string, data []byte, cas uint64, options memproxy.LeaseSetOptions) func() (memproxy.LeaseSetResponse, error) {
@@ -164,7 +164,7 @@ type PipelineMock struct {
 	FinishFunc func()
 
 	// LeaseGetFunc mocks the LeaseGet method.
-	LeaseGetFunc func(key string, options memproxy.LeaseGetOptions) func() (memproxy.LeaseGetResponse, error)
+	LeaseGetFunc func(key string, options memproxy.LeaseGetOptions) memproxy.LeaseGetResult
 
 	// LeaseSetFunc mocks the LeaseSet method.
 	LeaseSetFunc func(key string, data []byte, cas uint64, options memproxy.LeaseSetOptions) func() (memproxy.LeaseSetResponse, error)
@@ -308,7 +308,7 @@ func (mock *PipelineMock) FinishCalls() []struct {
 }
 
 // LeaseGet calls LeaseGetFunc.
-func (mock *PipelineMock) LeaseGet(key string, options memproxy.LeaseGetOptions) func() (memproxy.LeaseGetResponse, error) {
+func (mock *PipelineMock) LeaseGet(key string, options memproxy.LeaseGetOptions) memproxy.LeaseGetResult {
 	if mock.LeaseGetFunc == nil {
 		panic("PipelineMock.LeaseGetFunc: method is nil but Pipeline.LeaseGet was just called")
 	}

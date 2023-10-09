@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/mocks"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 type pipelineTest struct {
@@ -172,12 +174,12 @@ func (p *pipelineTest) stubHasNextAvail(hasNext bool) {
 func (p *pipelineTest) stubPipeLeaseGet(pipe *mocks.PipelineMock, resp memproxy.LeaseGetResponse, err error) {
 	pipe.LeaseGetFunc = func(
 		key string, options memproxy.LeaseGetOptions,
-	) func() (memproxy.LeaseGetResponse, error) {
+	) memproxy.LeaseGetResult {
 		p.appendAction(leaseGetAction(key))
-		return func() (memproxy.LeaseGetResponse, error) {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			p.appendAction(leaseGetFuncAction(key))
 			return resp, err
-		}
+		})
 	}
 }
 
@@ -188,13 +190,13 @@ func (p *pipelineTest) stubLeaseGetMulti(
 ) {
 	pipe.LeaseGetFunc = func(
 		key string, options memproxy.LeaseGetOptions,
-	) func() (memproxy.LeaseGetResponse, error) {
+	) memproxy.LeaseGetResult {
 		index := len(pipe.LeaseGetCalls()) - 1
 		p.appendAction(leaseGetAction(key))
-		return func() (memproxy.LeaseGetResponse, error) {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			p.appendAction(leaseGetFuncAction(key))
 			return respList[index], errList[index]
-		}
+		})
 	}
 }
 
@@ -293,7 +295,7 @@ func TestPipeline(t *testing.T) {
 		}, nil)
 
 		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
-		resp, err := fn()
+		resp, err := fn.Result()
 
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
@@ -324,7 +326,7 @@ func TestPipeline(t *testing.T) {
 		p.stubHasNextAvail(true)
 
 		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
-		resp, err := fn()
+		resp, err := fn.Result()
 
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
@@ -363,7 +365,7 @@ func TestPipeline(t *testing.T) {
 		p.stubHasNextAvail(false)
 
 		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
-		resp, err := fn()
+		resp, err := fn.Result()
 
 		assert.Equal(t, getError, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{}, resp)
@@ -390,7 +392,7 @@ func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
 		}, nil)
 
 		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
-		resp, err := fn()
+		resp, err := fn.Result()
 
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
@@ -424,7 +426,7 @@ func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
 		}, nil)
 
 		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
-		resp, err := fn()
+		resp, err := fn.Result()
 
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
@@ -478,7 +480,7 @@ func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
 		p.stubHasNextAvail(true)
 
 		fn := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
-		resp, err := fn()
+		resp, err := fn.Result()
 
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
@@ -555,14 +557,14 @@ func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
 		fn1 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
 		fn2 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
 
-		resp1, err := fn1()
+		resp1, err := fn1.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
 			Status: memproxy.LeaseGetStatusLeaseGranted,
 			CAS:    cas1,
 		}, resp1)
 
-		resp2, err := fn2()
+		resp2, err := fn2.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
 			Status: memproxy.LeaseGetStatusLeaseGranted,
@@ -640,14 +642,14 @@ func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
 		fn1 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
 		fn2 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
 
-		resp1, err := fn1()
+		resp1, err := fn1.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
 			Status: memproxy.LeaseGetStatusLeaseGranted,
 			CAS:    cas1,
 		}, resp1)
 
-		resp2, err := fn2()
+		resp2, err := fn2.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
 			Status: memproxy.LeaseGetStatusLeaseGranted,
@@ -655,7 +657,7 @@ func TestPipeline__LeaseGet_Then_Set(t *testing.T) {
 		}, resp2)
 
 		fn3 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
-		resp3, err := fn3()
+		resp3, err := fn3.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
 			Status: memproxy.LeaseGetStatusLeaseGranted,
@@ -705,14 +707,14 @@ func TestPipeline__LeaseGet_Multi(t *testing.T) {
 		fn1 := p.pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
 		fn2 := p.pipe.LeaseGet("KEY02", memproxy.LeaseGetOptions{})
 
-		resp, err := fn1()
+		resp, err := fn1.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
 			Status: memproxy.LeaseGetStatusLeaseGranted,
 			CAS:    2255,
 		}, resp)
 
-		resp, err = fn2()
+		resp, err = fn2.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetResponse{
 			Status: memproxy.LeaseGetStatusLeaseGranted,

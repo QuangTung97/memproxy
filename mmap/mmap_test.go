@@ -108,10 +108,10 @@ func newMapTest(options ...MapOption) *mapTest {
 func (m *mapTest) stubLeaseGet(resp memproxy.LeaseGetResponse) {
 	m.pipe.LeaseGetFunc = func(
 		key string, options memproxy.LeaseGetOptions,
-	) func() (memproxy.LeaseGetResponse, error) {
-		return func() (memproxy.LeaseGetResponse, error) {
+	) memproxy.LeaseGetResult {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			return resp, nil
-		}
+		})
 	}
 }
 
@@ -440,10 +440,10 @@ func TestMap(t *testing.T) {
 		// lease get error
 		m.pipe.LeaseGetFunc = func(
 			key string, options memproxy.LeaseGetOptions,
-		) func() (memproxy.LeaseGetResponse, error) {
-			return func() (memproxy.LeaseGetResponse, error) {
+		) memproxy.LeaseGetResult {
+			return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 				return memproxy.LeaseGetResponse{}, errors.New("lease get error")
-			}
+			})
 		}
 
 		stock1 := stockLocation{

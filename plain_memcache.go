@@ -2,6 +2,7 @@ package memproxy
 
 import (
 	"context"
+	"sync"
 
 	"github.com/QuangTung97/go-memcache/memcache"
 )
@@ -90,49 +91,58 @@ func (p *plainPipelineImpl) LowerSession() Session {
 }
 
 // LeaseGet ...
-func (p *plainPipelineImpl) LeaseGet(key string, _ LeaseGetOptions) func() (LeaseGetResponse, error) {
+func (p *plainPipelineImpl) LeaseGet(key string, _ LeaseGetOptions) LeaseGetResult {
 	result, getErr := p.pipeline.MGetFast(key, memcache.MGetOptions{
 		N:   p.leaseDuration,
 		CAS: true,
 	})
 	if getErr != nil {
-		return func() (LeaseGetResponse, error) {
-			return LeaseGetResponse{}, getErr
-		}
+		return LeaseGetErrorResult{Error: getErr}
 	}
 
-	return func() (LeaseGetResponse, error) {
-		mgetResp, err := result.Result()
-		memcache.ReleaseMGetResult(result)
+	r := getPlainLeaseGetResult()
+	r.mgetResult = result
+	return r
+}
 
-		if err != nil {
-			return LeaseGetResponse{}, err
-		}
+type plainLeaseGetResult struct {
+	mgetResult memcache.MGetResult
+}
 
-		if mgetResp.Type != memcache.MGetResponseTypeVA {
-			return LeaseGetResponse{}, ErrInvalidLeaseGetResponse
-		}
+func (r *plainLeaseGetResult) Result() (LeaseGetResponse, error) {
+	defer putPlainLeaseGetResult(r)
 
-		if mgetResp.Flags == 0 {
-			return LeaseGetResponse{
-				Status: LeaseGetStatusFound,
-				CAS:    mgetResp.CAS,
-				Data:   mgetResp.Data,
-			}, nil
-		}
+	mgetResp, err := r.mgetResult.Result()
 
-		if (mgetResp.Flags & memcache.MGetFlagW) > 0 {
-			return LeaseGetResponse{
-				Status: LeaseGetStatusLeaseGranted,
-				CAS:    mgetResp.CAS,
-			}, nil
-		}
+	memcache.ReleaseMGetResult(r.mgetResult)
 
+	if err != nil {
+		return LeaseGetResponse{}, err
+	}
+
+	if mgetResp.Type != memcache.MGetResponseTypeVA {
+		return LeaseGetResponse{}, ErrInvalidLeaseGetResponse
+	}
+
+	if mgetResp.Flags == 0 {
 		return LeaseGetResponse{
-			Status: LeaseGetStatusLeaseRejected,
+			Status: LeaseGetStatusFound,
+			CAS:    mgetResp.CAS,
+			Data:   mgetResp.Data,
+		}, nil
+	}
+
+	if (mgetResp.Flags & memcache.MGetFlagW) > 0 {
+		return LeaseGetResponse{
+			Status: LeaseGetStatusLeaseGranted,
 			CAS:    mgetResp.CAS,
 		}, nil
 	}
+
+	return LeaseGetResponse{
+		Status: LeaseGetStatusLeaseRejected,
+		CAS:    mgetResp.CAS,
+	}, nil
 }
 
 // LeaseSet ...
@@ -175,4 +185,23 @@ func (p *plainPipelineImpl) Execute() {
 // Finish ...
 func (p *plainPipelineImpl) Finish() {
 	p.pipeline.Finish()
+}
+
+// ========================================
+// plain memcache lease get result pool
+// ========================================
+
+var plainLeaseResultPool = sync.Pool{
+	New: func() any {
+		return &plainLeaseGetResult{}
+	},
+}
+
+func getPlainLeaseGetResult() *plainLeaseGetResult {
+	return plainLeaseResultPool.Get().(*plainLeaseGetResult)
+}
+
+func putPlainLeaseGetResult(r *plainLeaseGetResult) {
+	*r = plainLeaseGetResult{}
+	plainLeaseResultPool.Put(r)
 }
