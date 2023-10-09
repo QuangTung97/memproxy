@@ -243,7 +243,7 @@ type getResultType[T any] struct {
 	err  error
 }
 
-func (s *getState[T, K]) handleLeaseGranted(cas uint64) {
+func (s *GetState[T, K]) handleLeaseGranted(cas uint64) {
 	fillFn := s.it.filler(s.ctx, s.key)
 	s.it.addNextCall(func(_ unsafe.Pointer) {
 		fillResp, err := fillFn()
@@ -275,7 +275,8 @@ func (s *getState[T, K]) handleLeaseGranted(cas uint64) {
 	})
 }
 
-type getState[T Value, K Key] struct {
+// GetState store intermediate state when getting item
+type GetState[T Value, K Key] struct {
 	ctx context.Context
 	key K
 
@@ -287,25 +288,25 @@ type getState[T Value, K Key] struct {
 	leaseGetResult memproxy.LeaseGetResult
 }
 
-func (s *getState[T, K]) setResponseError(err error) {
+func (s *GetState[T, K]) setResponseError(err error) {
 	s.it.options.errorLogger(err)
 	s.it.getKeys[s.key] = getResultType[T]{
 		err: err,
 	}
 }
 
-func (s *getState[T, K]) setResponse(resp T) {
+func (s *GetState[T, K]) setResponse(resp T) {
 	s.it.getKeys[s.key] = getResultType[T]{
 		resp: resp,
 	}
 }
 
-func (s *getState[T, K]) doFillFunc(cas uint64) {
+func (s *GetState[T, K]) doFillFunc(cas uint64) {
 	s.it.stats.FillCount++
 	s.handleLeaseGranted(cas)
 }
 
-func (s *getState[T, K]) handleCacheError(err error) {
+func (s *GetState[T, K]) handleCacheError(err error) {
 	s.it.stats.LeaseGetError++
 	if s.it.options.fillingOnCacheError {
 		s.it.options.errorLogger(err)
@@ -315,7 +316,7 @@ func (s *getState[T, K]) handleCacheError(err error) {
 	}
 }
 
-func (s *getState[T, K]) nextFunc(_ unsafe.Pointer) {
+func (s *GetState[T, K]) nextFunc(_ unsafe.Pointer) {
 	leaseGetResp, err := s.leaseGetResult.Result()
 
 	s.leaseGetResult = nil
@@ -371,7 +372,8 @@ func (s *getState[T, K]) nextFunc(_ unsafe.Pointer) {
 	s.handleCacheError(ErrInvalidLeaseGetStatus)
 }
 
-func (s *getState[T, K]) returnFunc() (T, error) {
+// Result returns result
+func (s *GetState[T, K]) Result() (T, error) {
 	s.it.sess.Execute()
 
 	result := s.it.getKeys[s.key]
@@ -380,9 +382,14 @@ func (s *getState[T, K]) returnFunc() (T, error) {
 
 // Get a single item with key
 func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
+	return i.GetFast(ctx, key).Result
+}
+
+// GetFast is similar to Get but reduced one alloc
+func (i *Item[T, K]) GetFast(ctx context.Context, key K) *GetState[T, K] {
 	keyStr := key.String()
 
-	state := &getState[T, K]{
+	state := &GetState[T, K]{
 		ctx: ctx,
 		key: key,
 
@@ -394,7 +401,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 
 	_, existed := i.getKeys[key]
 	if existed {
-		return state.returnFunc
+		return state
 	}
 	i.getKeys[key] = getResultType[T]{}
 
@@ -402,7 +409,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 
 	i.addNextCall(state.nextFunc)
 
-	return state.returnFunc
+	return state
 }
 
 func (i *Item[T, K]) increaseRejectedCount(retryCount int) {
