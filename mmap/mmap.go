@@ -167,10 +167,10 @@ func (m *Map[T, R, K]) Get(
 ) func() (Option[T], error) {
 	bucketKey := ComputeBucketKey(elemCount, rootKey, key, m.separator)
 
-	fn := m.item.Get(ctx, bucketKey)
+	getState := m.item.GetFast(ctx, bucketKey)
 
 	return func() (Option[T], error) {
-		bucket, err := fn()
+		bucket, err := getState.Result()
 		if err != nil {
 			return Option[T]{}, err
 		}
