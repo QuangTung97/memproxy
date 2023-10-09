@@ -228,9 +228,9 @@ func TestPipeline__Do_Finish(t *testing.T) {
 		sess := pipe.LowerSession()
 
 		calls := 0
-		sess.AddNextCall(func() {
+		sess.AddNextCall(memproxy.NewEmptyCallback(func() {
 			calls++
-		})
+		}))
 		sess.Execute()
 
 		assert.Equal(t, 1, calls)

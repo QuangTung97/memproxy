@@ -1,9 +1,10 @@
 package memproxy
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type sessionTest struct {
@@ -57,11 +58,11 @@ func newCallMock() *callMock {
 	}
 }
 
-func (m *callMock) get() func() {
-	return func() {
+func (m *callMock) get() CallbackFunc {
+	return NewEmptyCallback(func() {
 		m.count++
 		m.fn()
-	}
+	})
 }
 
 func TestSessionAddNextCall(t *testing.T) {
@@ -674,4 +675,23 @@ func TestSession_Lower_Priority_AddNextCall__Run_On_Lowest_Priority(t *testing.T
 	lower2.Execute()
 
 	assert.Equal(t, []int{11}, calls)
+}
+
+func TestEmpty(t *testing.T) {
+	calls := 0
+	fn := LeaseGetResultFunc(func() (LeaseGetResponse, error) {
+		calls++
+		return LeaseGetResponse{
+			CAS: 123,
+		}, nil
+	})
+
+	resp, err := fn.Result()
+
+	assert.Equal(t, nil, err)
+	assert.Equal(t, LeaseGetResponse{
+		CAS: 123,
+	}, resp)
+
+	assert.Equal(t, 1, calls)
 }
