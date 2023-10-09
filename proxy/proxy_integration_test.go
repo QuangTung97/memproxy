@@ -1,10 +1,12 @@
 package proxy
 
 import (
-	"github.com/QuangTung97/go-memcache/memcache"
-	"github.com/QuangTung97/memproxy"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/QuangTung97/go-memcache/memcache"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/memproxy"
 )
 
 func clearMemcache(c *memcache.Client) {
@@ -50,7 +52,7 @@ func TestProxyIntegration(t *testing.T) {
 		defer pipe.Finish()
 
 		fn1 := pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
-		resp, err := fn1()
+		resp, err := fn1.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetStatusLeaseGranted, resp.Status)
 
@@ -62,7 +64,7 @@ func TestProxyIntegration(t *testing.T) {
 		}, setResp)
 
 		fn3 := pipe.LeaseGet("KEY01", memproxy.LeaseGetOptions{})
-		resp, err = fn3()
+		resp, err = fn3.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetStatusFound, resp.Status)
 		assert.Equal(t, []byte("some data 01"), resp.Data)
@@ -82,11 +84,11 @@ func TestProxyIntegration(t *testing.T) {
 		fn1 := pipe.LeaseGet(key1, memproxy.LeaseGetOptions{})
 		fn2 := pipe.LeaseGet(key2, memproxy.LeaseGetOptions{})
 
-		resp1, err := fn1()
+		resp1, err := fn1.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetStatusLeaseGranted, resp1.Status)
 
-		resp2, err := fn2()
+		resp2, err := fn2.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetStatusLeaseGranted, resp2.Status)
 
@@ -109,12 +111,12 @@ func TestProxyIntegration(t *testing.T) {
 		fn5 := pipe.LeaseGet(key1, memproxy.LeaseGetOptions{})
 		fn6 := pipe.LeaseGet(key2, memproxy.LeaseGetOptions{})
 
-		resp1, err = fn5()
+		resp1, err = fn5.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetStatusFound, resp1.Status)
 		assert.Equal(t, value1, resp1.Data)
 
-		resp2, err = fn6()
+		resp2, err = fn6.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetStatusFound, resp2.Status)
 		assert.Equal(t, value2, resp2.Data)
@@ -128,7 +130,7 @@ func TestProxyIntegration(t *testing.T) {
 		value1 := []byte("some data 01")
 
 		fn1 := pipe1.LeaseGet(key1, memproxy.LeaseGetOptions{})
-		resp, err := fn1()
+		resp, err := fn1.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetStatusLeaseGranted, resp.Status)
 
@@ -139,7 +141,7 @@ func TestProxyIntegration(t *testing.T) {
 		// Get Again
 		pipe2 := mc.Pipeline(newContext())
 		fn3 := pipe2.LeaseGet(key1, memproxy.LeaseGetOptions{})
-		resp, err = fn3()
+		resp, err = fn3.Result()
 		assert.Equal(t, nil, err)
 		assert.Equal(t, memproxy.LeaseGetStatusFound, resp.Status)
 		assert.Equal(t, value1, resp.Data)

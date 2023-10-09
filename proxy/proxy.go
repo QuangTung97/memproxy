@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/QuangTung97/go-memcache/memcache"
+
 	"github.com/QuangTung97/memproxy"
 )
 
@@ -193,7 +195,7 @@ type leaseGetState struct {
 	key      string
 	options  memproxy.LeaseGetOptions
 
-	fn func() (memproxy.LeaseGetResponse, error)
+	fn memproxy.LeaseGetResult
 
 	resp memproxy.LeaseGetResponse
 	err  error
@@ -201,7 +203,10 @@ type leaseGetState struct {
 
 func (s *leaseGetState) retryOnOtherNode() {
 	s.pipe.doExecuteForAllServers()
-	s.resp, s.err = s.fn()
+
+	s.resp, s.err = s.fn.Result()
+	s.fn = nil
+
 	if s.err == nil {
 		s.pipe.setKeyForLeaseSet(s.key, s.resp, s.serverID)
 	}
@@ -209,7 +214,9 @@ func (s *leaseGetState) retryOnOtherNode() {
 
 func (s *leaseGetState) nextFunc() {
 	s.pipe.doExecuteForAllServers()
-	s.resp, s.err = s.fn()
+
+	s.resp, s.err = s.fn.Result()
+	s.fn = nil
 
 	if s.err != nil {
 		s.pipe.selector.SetFailedServer(s.serverID)
@@ -229,7 +236,7 @@ func (s *leaseGetState) nextFunc() {
 	s.pipe.setKeyForLeaseSet(s.key, s.resp, s.serverID)
 }
 
-func (s *leaseGetState) returnFunc() (memproxy.LeaseGetResponse, error) {
+func (s *leaseGetState) Result() (memproxy.LeaseGetResponse, error) {
 	s.pipe.sess.Execute()
 	s.pipe.selector.Reset()
 	return s.resp, s.err
@@ -238,7 +245,7 @@ func (s *leaseGetState) returnFunc() (memproxy.LeaseGetResponse, error) {
 // LeaseGet ...
 func (p *Pipeline) LeaseGet(
 	key string, options memproxy.LeaseGetOptions,
-) func() (memproxy.LeaseGetResponse, error) {
+) memproxy.LeaseGetResult {
 	serverID := p.selector.SelectServer(key)
 
 	pipe := p.getRoutePipeline(serverID)
@@ -254,7 +261,7 @@ func (p *Pipeline) LeaseGet(
 	}
 
 	p.sess.AddNextCall(state.nextFunc)
-	return state.returnFunc
+	return state
 }
 
 // LeaseSet ...
