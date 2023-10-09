@@ -275,6 +275,7 @@ func (s *GetState[T, K]) handleLeaseGranted(cas uint64) {
 	})
 }
 
+// GetState store intermediate state when getting item
 type GetState[T Value, K Key] struct {
 	ctx context.Context
 	key K
@@ -371,6 +372,7 @@ func (s *GetState[T, K]) nextFunc(_ unsafe.Pointer) {
 	s.handleCacheError(ErrInvalidLeaseGetStatus)
 }
 
+// Result returns result
 func (s *GetState[T, K]) Result() (T, error) {
 	s.it.sess.Execute()
 
