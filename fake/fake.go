@@ -2,9 +2,10 @@ package fake
 
 import (
 	"context"
+	"sync"
+
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/mocks"
-	"sync"
 )
 
 // Entry ...
@@ -54,7 +55,7 @@ func (m *Memcache) Pipeline(_ context.Context, _ ...memproxy.PipelineOption) mem
 
 	pipe := &mocks.PipelineMock{}
 
-	pipe.LeaseGetFunc = func(key string, options memproxy.LeaseGetOptions) func() (memproxy.LeaseGetResponse, error) {
+	pipe.LeaseGetFunc = func(key string, options memproxy.LeaseGetOptions) memproxy.LeaseGetResult {
 		var resp memproxy.LeaseGetResponse
 
 		callFn := func() {
@@ -92,10 +93,10 @@ func (m *Memcache) Pipeline(_ context.Context, _ ...memproxy.PipelineOption) mem
 
 		calls = append(calls, callFn)
 
-		return func() (memproxy.LeaseGetResponse, error) {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			doCalls()
 			return resp, nil
-		}
+		})
 	}
 
 	pipe.LeaseSetFunc = func(

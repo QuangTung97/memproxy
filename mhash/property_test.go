@@ -3,14 +3,16 @@ package mhash
 import (
 	"context"
 	"fmt"
-	"github.com/QuangTung97/memproxy"
-	"github.com/QuangTung97/memproxy/mocks"
-	"github.com/spaolacci/murmur3"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/spaolacci/murmur3"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/mocks"
 )
 
 type propertyTest struct {
@@ -60,9 +62,9 @@ func newPropertyTest(maxHashesPerBucket int) *propertyTest {
 	cas := uint64(5562000)
 	pipe.LeaseGetFunc = func(
 		key string, options memproxy.LeaseGetOptions,
-	) func() (memproxy.LeaseGetResponse, error) {
+	) memproxy.LeaseGetResult {
 		p.addCall("lease-get", key)
-		return func() (memproxy.LeaseGetResponse, error) {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			p.addCall("lease-get-func", key)
 
 			cas++
@@ -70,7 +72,7 @@ func newPropertyTest(maxHashesPerBucket int) *propertyTest {
 				Status: memproxy.LeaseGetStatusLeaseGranted,
 				CAS:    cas,
 			}, nil
-		}
+		})
 	}
 
 	pipe.LeaseSetFunc = func(

@@ -264,9 +264,10 @@ type getState[T Value, K Key] struct {
 
 	it *Item[T, K]
 
-	retryCount   int
-	keyStr       string
-	leaseGetFunc func() (memproxy.LeaseGetResponse, error)
+	retryCount int
+	keyStr     string
+
+	leaseGetResult memproxy.LeaseGetResult
 }
 
 func (s *getState[T, K]) setResponseError(err error) {
@@ -298,7 +299,10 @@ func (s *getState[T, K]) handleCacheError(err error) {
 }
 
 func (s *getState[T, K]) nextFunc() {
-	leaseGetResp, err := s.leaseGetFunc()
+	leaseGetResp, err := s.leaseGetResult.Result()
+
+	s.leaseGetResult = nil
+
 	if err != nil {
 		s.handleCacheError(err)
 		return
@@ -332,7 +336,7 @@ func (s *getState[T, K]) nextFunc() {
 			s.it.sess.AddDelayedCall(s.it.options.sleepDurations[s.retryCount], func() {
 				s.retryCount++
 
-				s.leaseGetFunc = s.it.pipeline.LeaseGet(s.keyStr, memproxy.LeaseGetOptions{})
+				s.leaseGetResult = s.it.pipeline.LeaseGet(s.keyStr, memproxy.LeaseGetOptions{})
 				s.it.sess.AddNextCall(s.nextFunc)
 			})
 			return
@@ -377,7 +381,7 @@ func (i *Item[T, K]) Get(ctx context.Context, key K) func() (T, error) {
 	}
 	i.getKeys[key] = getResultType[T]{}
 
-	state.leaseGetFunc = i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
+	state.leaseGetResult = i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
 
 	i.sess.AddNextCall(state.nextFunc)
 

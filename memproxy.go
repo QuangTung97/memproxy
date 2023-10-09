@@ -31,6 +31,14 @@ func (r LeaseGetErrorResult) Result() (LeaseGetResponse, error) {
 	return LeaseGetResponse{}, r.Error
 }
 
+// LeaseGetResultFunc for function implementation of LeaseGetResult
+type LeaseGetResultFunc func() (LeaseGetResponse, error)
+
+// Result ...
+func (f LeaseGetResultFunc) Result() (LeaseGetResponse, error) {
+	return f()
+}
+
 // Pipeline represents a generic Pipeline
 type Pipeline interface {
 	// LeaseGet should not be used directly, use the item or mmap package instead

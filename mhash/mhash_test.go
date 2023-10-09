@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/item"
 	"github.com/QuangTung97/memproxy/mocks"
-	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 type customerUsage struct {
@@ -118,21 +120,21 @@ func newHashTest(options ...Option) *hashTest {
 func (h *hashTest) stubLeaseGet(resp memproxy.LeaseGetResponse, err error) {
 	h.pipe.LeaseGetFunc = func(
 		key string, options memproxy.LeaseGetOptions,
-	) func() (memproxy.LeaseGetResponse, error) {
-		return func() (memproxy.LeaseGetResponse, error) {
+	) memproxy.LeaseGetResult {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			return resp, err
-		}
+		})
 	}
 }
 
 func (h *hashTest) stubLeaseGetMulti(respList ...memproxy.LeaseGetResponse) {
 	h.pipe.LeaseGetFunc = func(
 		key string, options memproxy.LeaseGetOptions,
-	) func() (memproxy.LeaseGetResponse, error) {
+	) memproxy.LeaseGetResult {
 		index := len(h.pipe.LeaseGetCalls()) - 1
-		return func() (memproxy.LeaseGetResponse, error) {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			return respList[index], nil
-		}
+		})
 	}
 }
 
@@ -846,13 +848,13 @@ func TestHash_Concurrent(t *testing.T) {
 
 		h.pipe.LeaseGetFunc = func(
 			key string, options memproxy.LeaseGetOptions,
-		) func() (memproxy.LeaseGetResponse, error) {
+		) memproxy.LeaseGetResult {
 			index := len(h.pipe.LeaseGetCalls()) - 1
 			callOrders = append(callOrders, "lease-get")
-			return func() (memproxy.LeaseGetResponse, error) {
+			return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 				callOrders = append(callOrders, "lease-func")
 				return respList[index], nil
-			}
+			})
 		}
 
 		fn1 := h.hash.Get(newContext(),
@@ -927,14 +929,14 @@ func TestHash_Concurrent(t *testing.T) {
 
 		h.pipe.LeaseGetFunc = func(
 			key string, options memproxy.LeaseGetOptions,
-		) func() (memproxy.LeaseGetResponse, error) {
+		) memproxy.LeaseGetResult {
 			index := len(h.pipe.LeaseGetCalls()) - 1
 			callOrders = append(callOrders, "lease-get:"+key)
 
-			return func() (memproxy.LeaseGetResponse, error) {
+			return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 				callOrders = append(callOrders, "lease-func:"+key)
 				return respList[index], nil
-			}
+			})
 		}
 
 		fn1 := h.hash.Get(newContext(),

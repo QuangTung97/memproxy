@@ -171,18 +171,12 @@ func (p *pipelineTest) stubHasNextAvail(hasNext bool) {
 	}
 }
 
-type leaseResultFunc func() (memproxy.LeaseGetResponse, error)
-
-func (f leaseResultFunc) Result() (memproxy.LeaseGetResponse, error) {
-	return f()
-}
-
 func (p *pipelineTest) stubPipeLeaseGet(pipe *mocks.PipelineMock, resp memproxy.LeaseGetResponse, err error) {
 	pipe.LeaseGetFunc = func(
 		key string, options memproxy.LeaseGetOptions,
 	) memproxy.LeaseGetResult {
 		p.appendAction(leaseGetAction(key))
-		return leaseResultFunc(func() (memproxy.LeaseGetResponse, error) {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			p.appendAction(leaseGetFuncAction(key))
 			return resp, err
 		})
@@ -199,7 +193,7 @@ func (p *pipelineTest) stubLeaseGetMulti(
 	) memproxy.LeaseGetResult {
 		index := len(pipe.LeaseGetCalls()) - 1
 		p.appendAction(leaseGetAction(key))
-		return leaseResultFunc(func() (memproxy.LeaseGetResponse, error) {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			p.appendAction(leaseGetFuncAction(key))
 			return respList[index], errList[index]
 		})

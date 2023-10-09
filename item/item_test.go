@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/QuangTung97/memproxy"
 	"github.com/QuangTung97/memproxy/fake"
 	"github.com/QuangTung97/memproxy/mocks"
-	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 type userValue struct {
@@ -167,26 +169,26 @@ func (i *itemTest) appendAction(action string) {
 func (i *itemTest) stubLeaseGet(resp memproxy.LeaseGetResponse, err error) {
 	i.pipe.LeaseGetFunc = func(
 		key string, options memproxy.LeaseGetOptions,
-	) func() (memproxy.LeaseGetResponse, error) {
+	) memproxy.LeaseGetResult {
 		i.appendAction(leaseGetAction(key))
-		return func() (memproxy.LeaseGetResponse, error) {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			i.appendAction(leaseGetFuncAction(key))
 			return resp, err
-		}
+		})
 	}
 }
 
 func (i *itemTest) stubLeaseGetMulti(respList ...memproxy.LeaseGetResponse) {
 	i.pipe.LeaseGetFunc = func(
 		key string, options memproxy.LeaseGetOptions,
-	) func() (memproxy.LeaseGetResponse, error) {
+	) memproxy.LeaseGetResult {
 		i.appendAction(leaseGetAction(key))
 		index := len(i.pipe.LeaseGetCalls()) - 1
 
-		return func() (memproxy.LeaseGetResponse, error) {
+		return memproxy.LeaseGetResultFunc(func() (memproxy.LeaseGetResponse, error) {
 			i.appendAction(leaseGetFuncAction(key))
 			return respList[index], nil
-		}
+		})
 	}
 }
 
