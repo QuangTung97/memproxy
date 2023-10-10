@@ -2,6 +2,8 @@ package memproxy
 
 import (
 	"context"
+	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -353,5 +355,33 @@ func TestPlainMemcache__Invalid_Key(t *testing.T) {
 
 	resp, err := fn.Result()
 	assert.Equal(t, memcache.ErrInvalidKeyFormat, err)
+	assert.Equal(t, LeaseGetResponse{}, resp)
+}
+
+func TestPlainMemcache__Connection_Error(t *testing.T) {
+	client, err := memcache.New("localhost:11200", 1)
+	if err != nil {
+		panic(err)
+	}
+	t.Cleanup(func() {
+		_ = client.Close()
+	})
+
+	cache := NewPlainMemcache(client,
+		WithPlainMemcacheLeaseDuration(7),
+		WithPlainMemcacheSessionProvider(NewSessionProvider()),
+	)
+
+	pipe := cache.Pipeline(context.Background())
+	fn := pipe.LeaseGet("KEY01", LeaseGetOptions{})
+
+	resp, err := fn.Result()
+
+	var netErr *net.OpError
+	isNetErr := errors.As(err, &netErr)
+	assert.Equal(t, true, isNetErr)
+	assert.Equal(t, "dial", netErr.Op)
+	assert.Equal(t, "tcp", netErr.Net)
+	assert.Equal(t, "connect: connection refused", netErr.Err.Error())
 	assert.Equal(t, LeaseGetResponse{}, resp)
 }
