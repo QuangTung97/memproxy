@@ -380,6 +380,8 @@ func TestPlainMemcache__Connection_Error(t *testing.T) {
 	var netErr *net.OpError
 	isNetErr := errors.As(err, &netErr)
 	assert.Equal(t, true, isNetErr)
-	assert.Equal(t, "dial tcp 127.0.0.1:11200: connect: connection refused", netErr.Error())
+	assert.Equal(t, "dial", netErr.Op)
+	assert.Equal(t, "tcp", netErr.Net)
+	assert.Equal(t, "connect: connection refused", netErr.Err.Error())
 	assert.Equal(t, LeaseGetResponse{}, resp)
 }
