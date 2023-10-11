@@ -206,7 +206,7 @@ func New[T Value, K Key](
 		unmarshaler: unmarshaler,
 		filler:      filler,
 
-		getKeys: map[K]getResultType[T]{},
+		getKeys: map[K]*getResultType[T]{},
 	}
 }
 
@@ -219,7 +219,7 @@ type Item[T Value, K Key] struct {
 	unmarshaler Unmarshaler[T]
 	filler      Filler[T, K]
 
-	getKeys map[K]getResultType[T]
+	getKeys map[K]*getResultType[T]
 
 	stats Stats
 }
@@ -286,19 +286,17 @@ type GetState[T Value, K Key] struct {
 	keyStr     string
 
 	leaseGetResult memproxy.LeaseGetResult
+
+	result getResultType[T]
 }
 
 func (s *GetState[T, K]) setResponseError(err error) {
 	s.it.options.errorLogger(err)
-	s.it.getKeys[s.key] = getResultType[T]{
-		err: err,
-	}
+	s.it.getKeys[s.key].err = err
 }
 
 func (s *GetState[T, K]) setResponse(resp T) {
-	s.it.getKeys[s.key] = getResultType[T]{
-		resp: resp,
-	}
+	s.it.getKeys[s.key].resp = resp
 }
 
 func (s *GetState[T, K]) doFillFunc(cas uint64) {
@@ -403,7 +401,7 @@ func (i *Item[T, K]) GetFast(ctx context.Context, key K) *GetState[T, K] {
 	if existed {
 		return state
 	}
-	i.getKeys[key] = getResultType[T]{}
+	i.getKeys[key] = &state.result
 
 	state.leaseGetResult = i.pipeline.LeaseGet(keyStr, memproxy.LeaseGetOptions{})
 
@@ -432,7 +430,7 @@ func (i *Item[T, K]) LowerSession() memproxy.Session {
 
 // Reset clear in-memory cached values
 func (i *Item[T, K]) Reset() {
-	i.getKeys = map[K]getResultType[T]{}
+	i.getKeys = map[K]*getResultType[T]{}
 }
 
 // Stats ...

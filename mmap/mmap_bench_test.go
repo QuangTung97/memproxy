@@ -94,6 +94,9 @@ func BenchmarkWithProxy__Map_Get_Batch_100(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		doGetMapElemFromMemcache(mc, numKeys)
 	}
+
+	b.StopTimer()
+	writeMemProfile()
 }
 
 func BenchmarkWithProxy__Map_Get_Batch_1000(b *testing.B) {
@@ -108,6 +111,8 @@ func BenchmarkWithProxy__Map_Get_Batch_1000(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		doGetMapElemFromMemcache(mc, numKeys)
 	}
+
+	b.StopTimer()
 	writeMemProfile()
 }
 

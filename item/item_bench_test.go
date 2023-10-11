@@ -3,15 +3,17 @@ package item
 import (
 	"context"
 	"encoding/binary"
-	"github.com/QuangTung97/go-memcache/memcache"
-	"github.com/QuangTung97/memproxy"
-	"github.com/QuangTung97/memproxy/proxy"
-	"github.com/stretchr/testify/assert"
 	"os"
 	"runtime"
 	"runtime/pprof"
 	"strconv"
 	"testing"
+
+	"github.com/QuangTung97/go-memcache/memcache"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/proxy"
 )
 
 type benchValue struct {
