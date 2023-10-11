@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 
@@ -1202,4 +1203,8 @@ func TestItem_WithFakePipeline(t *testing.T) {
 	}, resp)
 
 	assert.Equal(t, 1, fillCalls)
+}
+
+func TestSizeOfStateCommon(t *testing.T) {
+	assert.Equal(t, uintptr(88), unsafe.Sizeof(getStateCommon{}))
 }
