@@ -228,8 +228,6 @@ type itemCommon struct {
 	sess     memproxy.Session
 	pipeline memproxy.Pipeline
 	stats    Stats
-
-	unmarshalAndSet func(data []byte)
 }
 
 func (i *itemCommon) addNextCall(fn func(obj unsafe.Pointer)) {
