@@ -1,8 +1,10 @@
 package memproxy
 
 import (
+	"fmt"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -694,4 +696,123 @@ func TestEmpty(t *testing.T) {
 	}, resp)
 
 	assert.Equal(t, 1, calls)
+}
+
+func iterateCallbackSegment(l *callbackList) {
+	it := l.getIterator()
+	for {
+		fn, ok := it.getNext()
+		if !ok {
+			break
+		}
+		fn.Call()
+	}
+}
+
+func newCallbackListTest() *callbackList {
+	var l callbackList
+	return &l
+}
+
+func TestCallbackSegment(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		l := newCallbackListTest()
+		assert.Equal(t, true, l.isEmpty())
+		iterateCallbackSegment(l)
+	})
+
+	t.Run("single", func(t *testing.T) {
+		l := newCallbackListTest()
+
+		var values []string
+
+		fn1 := &callMock{
+			fn: func() {
+				values = append(values, "fn1")
+			},
+		}
+		l.append(fn1.get())
+
+		assert.Equal(t, false, l.isEmpty())
+		iterateCallbackSegment(l)
+		assert.Equal(t, true, l.isEmpty())
+
+		assert.Equal(t, 1, fn1.count)
+		assert.Equal(t, []string{"fn1"}, values)
+	})
+
+	t.Run("multiple", func(t *testing.T) {
+		l := newCallbackListTest()
+
+		var values []string
+
+		fn1 := &callMock{
+			fn: func() {
+				values = append(values, "fn1")
+			},
+		}
+		fn2 := &callMock{
+			fn: func() {
+				values = append(values, "fn2")
+			},
+		}
+		fn3 := &callMock{
+			fn: func() {
+				values = append(values, "fn3")
+			},
+		}
+		l.append(fn1.get())
+		l.append(fn2.get())
+		l.append(fn3.get())
+
+		iterateCallbackSegment(l)
+
+		assert.Equal(t, 1, fn1.count)
+		assert.Equal(t, 1, fn2.count)
+		assert.Equal(t, 1, fn3.count)
+
+		assert.Equal(t, []string{"fn1", "fn2", "fn3"}, values)
+	})
+
+	t.Run("multiples of 16", func(t *testing.T) {
+		l := newCallbackListTest()
+
+		var values []string
+
+		for i := 0; i < 16*3; i++ {
+			index := i
+			fn := &callMock{
+				fn: func() {
+					values = append(values, fmt.Sprintf("fn%02d", index))
+				},
+			}
+			l.append(fn.get())
+		}
+
+		iterateCallbackSegment(l)
+
+		expected := make([]string, 16*3)
+		for i := range expected {
+			expected[i] = fmt.Sprintf("fn%02d", i)
+		}
+
+		assert.Equal(t, 16*3, len(values))
+		assert.Equal(t, expected, values)
+	})
+}
+
+func TestCallbackSegmentPool(t *testing.T) {
+	t.Run("normal", func(t *testing.T) {
+		x := getCallbackSegment()
+		x.size = 14
+
+		oldPtr := unsafe.Pointer(x)
+
+		putCallbackSegment(x)
+
+		x = getCallbackSegment()
+		assert.Equal(t, 0, x.size)
+
+		fmt.Println("POINTERS EQUAL:", oldPtr == unsafe.Pointer(x))
+	})
 }

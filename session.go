@@ -1,6 +1,9 @@
 package memproxy
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type sessionProviderImpl struct {
 	nowFn   func() time.Time
@@ -61,6 +64,7 @@ func newSession(
 		lower:    nil,
 		higher:   higher,
 	}
+
 	if higher != nil {
 		higher.lower = s
 		s.isDirty = higher.isDirty
@@ -70,7 +74,7 @@ func newSession(
 
 type sessionImpl struct {
 	provider  *sessionProviderImpl
-	nextCalls []CallbackFunc
+	nextCalls callbackList
 	heap      delayedCallHeap
 
 	isDirty bool // an optimization
@@ -99,10 +103,7 @@ func setDirtyRecursive(s *sessionImpl) {
 // AddNextCall ...
 func (s *sessionImpl) AddNextCall(fn CallbackFunc) {
 	setDirtyRecursive(s)
-	if s.nextCalls == nil {
-		s.nextCalls = make([]CallbackFunc, 0, 32)
-	}
-	s.nextCalls = append(s.nextCalls, fn)
+	s.nextCalls.append(fn)
 }
 
 // AddDelayedCall ...
@@ -145,11 +146,15 @@ func (s *sessionImpl) GetLower() Session {
 }
 
 func (s *sessionImpl) executeNextCalls() {
-	for len(s.nextCalls) > 0 {
-		nextCalls := s.nextCalls
-		s.nextCalls = nil
-		for _, call := range nextCalls {
-			call.Call()
+	for !s.nextCalls.isEmpty() {
+		it := s.nextCalls.getIterator()
+
+		for {
+			fn, ok := it.getNext()
+			if !ok {
+				break
+			}
+			fn.Call()
 		}
 	}
 }
@@ -173,4 +178,98 @@ MainLoop:
 			top.call.Call()
 		}
 	}
+}
+
+// ===============================
+// callback list
+// ===============================
+
+type callbackList struct {
+	head *callbackSegment
+	tail *callbackSegment
+}
+
+type callbackSegment struct {
+	next  *callbackSegment // linked list of callback
+	size  int
+	funcs [16]CallbackFunc
+}
+
+func (s *callbackList) append(fn CallbackFunc) {
+	if s.tail == nil {
+		s.head = getCallbackSegment()
+		s.tail = s.head
+	} else if s.tail.size >= len(s.tail.funcs) {
+		newTail := getCallbackSegment()
+		s.tail.next = newTail
+		s.tail = newTail
+	}
+
+	n := s.tail
+	n.funcs[n.size] = fn
+	n.size++
+}
+
+func (s *callbackList) isEmpty() bool {
+	return s.head == nil
+}
+
+type callbackListIterator struct {
+	current *callbackSegment
+	index   int
+}
+
+// getIterator also clears the list
+func (s *callbackList) getIterator() callbackListIterator {
+	it := callbackListIterator{
+		current: s.head,
+		index:   0,
+	}
+
+	s.head = nil
+	s.tail = nil
+
+	return it
+}
+
+func (it *callbackListIterator) getNext() (CallbackFunc, bool) {
+	if it.current == nil {
+		return CallbackFunc{}, false
+	}
+
+	if it.index >= it.current.size {
+		prev := it.current
+		it.current = it.current.next
+
+		putCallbackSegment(prev)
+
+		it.index = 0
+
+		if it.current == nil {
+			return CallbackFunc{}, false
+		}
+	}
+
+	fn := it.current.funcs[it.index]
+	it.index++
+	return fn, true
+}
+
+// ===============================
+// Pool of Callback Segments
+// ===============================
+
+var callbackSegmentPool = sync.Pool{
+	New: func() any {
+		return &callbackSegment{}
+	},
+}
+
+func getCallbackSegment() *callbackSegment {
+	return callbackSegmentPool.Get().(*callbackSegment)
+}
+
+func putCallbackSegment(s *callbackSegment) {
+	*s = callbackSegment{}
+	callbackSegmentPool.Put(s)
 }
