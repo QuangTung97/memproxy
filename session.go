@@ -270,6 +270,10 @@ func getCallbackSegment() *callbackSegment {
 }
 
 func putCallbackSegment(s *callbackSegment) {
-	*s = callbackSegment{}
+	s.next = nil
+	for i := 0; i < s.size; i++ {
+		s.funcs[i] = CallbackFunc{}
+	}
+	s.size = 0
 	callbackSegmentPool.Put(s)
 }
