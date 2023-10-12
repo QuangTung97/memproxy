@@ -804,7 +804,21 @@ func TestCallbackSegment(t *testing.T) {
 func TestCallbackSegmentPool(t *testing.T) {
 	t.Run("normal", func(t *testing.T) {
 		x := getCallbackSegment()
-		x.size = 14
+		x.size = 3
+		x.next = x
+
+		num1 := 10
+		num2 := 10
+
+		x.funcs[0] = CallbackFunc{
+			Object: unsafe.Pointer(&num1),
+		}
+		x.funcs[2] = CallbackFunc{
+			Object: unsafe.Pointer(&num2),
+		}
+		x.funcs[3] = CallbackFunc{
+			Object: unsafe.Pointer(&num2),
+		}
 
 		oldPtr := unsafe.Pointer(x)
 
@@ -812,7 +826,11 @@ func TestCallbackSegmentPool(t *testing.T) {
 
 		x = getCallbackSegment()
 		assert.Equal(t, 0, x.size)
+		assert.Nil(t, x.next)
+		assert.Nil(t, x.funcs[0].Object)
+		assert.Nil(t, x.funcs[2].Object)
 
 		fmt.Println("POINTERS EQUAL:", oldPtr == unsafe.Pointer(x))
+		fmt.Println("SHOULD NOT NIL:", x.funcs[3].Object)
 	})
 }
