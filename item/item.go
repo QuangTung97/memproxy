@@ -471,6 +471,27 @@ func (i *Item[T, K]) GetFast(ctx context.Context, key K) *GetState[T, K] {
 	return state
 }
 
+// GetMulti gets multiple keys at once
+func (i *Item[T, K]) GetMulti(ctx context.Context, keys []K) func() ([]T, error) {
+	states := make([]*GetState[T, K], 0, len(keys))
+	for _, k := range keys {
+		state := i.GetFast(ctx, k)
+		states = append(states, state)
+	}
+
+	return func() ([]T, error) {
+		result := make([]T, 0, len(states))
+		for _, state := range states {
+			val, err := state.Result()
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, val)
+		}
+		return result, nil
+	}
+}
+
 func (i *itemCommon) increaseRejectedCount(retryCount int) {
 	i.stats.TotalRejectedCount++
 

@@ -986,6 +986,85 @@ func TestItem__Multi(t *testing.T) {
 	})
 }
 
+func TestItem_GetMulti(t *testing.T) {
+	t.Run("different-keys--found", func(t *testing.T) {
+		i := newItemTest()
+
+		user1 := userValue{
+			Tenant: "TENANT01",
+			Name:   "USER01",
+			Age:    88,
+		}
+
+		user2 := userValue{
+			Tenant: "TENANT02",
+			Name:   "USER02",
+			Age:    89,
+		}
+
+		i.stubLeaseGetMulti(
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusFound,
+				CAS:    1101,
+				Data:   mustMarshalUser(user1),
+			},
+			memproxy.LeaseGetResponse{
+				Status: memproxy.LeaseGetStatusFound,
+				CAS:    1102,
+				Data:   mustMarshalUser(user2),
+			},
+		)
+
+		fn := i.item.GetMulti(newContext(), []userKey{user1.GetKey(), user2.GetKey()})
+		users, err := fn()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, []userValue{
+			user1, user2,
+		}, users)
+
+		calls := i.pipe.LeaseGetCalls()
+
+		assert.Equal(t, 2, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+		assert.Equal(t, "TENANT02:USER02", calls[1].Key)
+
+		assert.Equal(t, []userKey(nil), i.fillKeys)
+
+		assert.Equal(t, []string{
+			leaseGetAction(user1.GetKey().String()),
+			leaseGetAction(user2.GetKey().String()),
+
+			leaseGetFuncAction(user1.GetKey().String()),
+			leaseGetFuncAction(user2.GetKey().String()),
+		}, i.actions)
+	})
+
+	t.Run("lease-get-returns-error", func(t *testing.T) {
+		i := newItemTest()
+
+		i.stubLeaseGet(memproxy.LeaseGetResponse{}, errors.New("lease get error"))
+
+		fn := i.item.GetMulti(newContext(), []userKey{
+			{Tenant: "TENANT01", Name: "USER01"},
+		})
+		users, err := fn()
+		assert.Equal(t, errors.New("lease get error"), err)
+		assert.Equal(t, []userValue(nil), users)
+
+		calls := i.pipe.LeaseGetCalls()
+
+		assert.Equal(t, 1, len(calls))
+		assert.Equal(t, "TENANT01:USER01", calls[0].Key)
+
+		assert.Equal(t, []userKey(nil), i.fillKeys)
+
+		assert.Equal(t, []string{
+			leaseGetAction("TENANT01:USER01"),
+			leaseGetFuncAction("TENANT01:USER01"),
+		}, i.actions)
+	})
+}
+
 func TestMultiGetFiller(t *testing.T) {
 	t.Run("disable-delete-on-not-found", func(t *testing.T) {
 		user1 := userValue{
