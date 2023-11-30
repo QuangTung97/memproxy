@@ -9,9 +9,13 @@ jobs:
     runs-on: ubuntu-20.04
     services:
       memcached:
-        image: memcached:1.6.18
+        image: memcached:1.6.19
         ports:
           - 11211:11211
+      memcached2:
+        image: memcached:1.6.19
+        ports:
+          - 11212:11211
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
