@@ -3,19 +3,23 @@ package item
 import (
 	"context"
 	"fmt"
-	"github.com/QuangTung97/go-memcache/memcache"
-	"github.com/QuangTung97/memproxy"
-	"github.com/QuangTung97/memproxy/proxy"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/QuangTung97/go-memcache/memcache"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/memproxy"
+	"github.com/QuangTung97/memproxy/proxy"
 )
 
 type itemPropertyTest struct {
-	client *memcache.Client
-	mc     memproxy.Memcache
+	client  *memcache.Client
+	client2 *memcache.Client
+
+	mc memproxy.Memcache
 
 	mut        sync.Mutex
 	currentAge int64
@@ -62,6 +66,14 @@ func (p *itemPropertyTest) flushAll() {
 	if err != nil {
 		panic(err)
 	}
+
+	if p.client2 != nil {
+		pipe := p.client2.Pipeline()
+		err := pipe.FlushAll()()
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func newItemPropertyTest(t *testing.T) *itemPropertyTest {
@@ -92,6 +104,50 @@ func newItemPropertyTestWithProxy(t *testing.T) *itemPropertyTest {
 		{
 			Host: "localhost",
 			Port: 11211,
+		},
+	}
+	mc, closeFunc, err := proxy.NewSimpleReplicatedMemcache(
+		servers, 3,
+		proxy.NewSimpleStats(servers),
+	)
+	if err != nil {
+		panic(err)
+	}
+	t.Cleanup(closeFunc)
+	p.mc = mc
+
+	return p
+}
+
+func newItemPropertyTestWithProxyTwoNodes(t *testing.T) *itemPropertyTest {
+	p := &itemPropertyTest{}
+
+	client1, err := memcache.New("localhost:11211", 3)
+	if err != nil {
+		panic(err)
+	}
+
+	client2, err := memcache.New("localhost:11212", 3)
+	if err != nil {
+		panic(err)
+	}
+
+	t.Cleanup(func() {
+		_ = client1.Close()
+		_ = client2.Close()
+	})
+
+	p.client = client1
+	p.client2 = client2
+
+	servers := []proxy.SimpleServerConfig{
+		{
+			Host: "localhost",
+			Port: 11211,
+		},
+		{
+			Host: "localhost",
+			Port: 11212,
 		},
 	}
 	mc, closeFunc, err := proxy.NewSimpleReplicatedMemcache(
@@ -182,6 +238,19 @@ func TestProperty_SingleKey(t *testing.T) {
 	})
 
 	t.Run("with-proxy", func(t *testing.T) {
+		seed := time.Now().UnixNano()
+		rand.Seed(seed)
+		fmt.Println("SEED:", seed)
+
+		p := newItemPropertyTestWithProxy(t)
+
+		for i := 0; i < 100; i++ {
+			p.flushAll()
+			p.testConsistency(t)
+		}
+	})
+
+	t.Run("with-proxy-two-nodes", func(t *testing.T) {
 		seed := time.Now().UnixNano()
 		rand.Seed(seed)
 		fmt.Println("SEED:", seed)
