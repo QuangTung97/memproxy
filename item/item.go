@@ -110,9 +110,10 @@ var ErrExceededRejectRetryLimit = errors.New("item: exceeded lease rejected retr
 var ErrInvalidLeaseGetStatus = errors.New("item: invalid lease get response status")
 
 type multiGetState[T any, K comparable] struct {
-	keys   []K
-	result map[K]T
-	err    error
+	completed bool
+	keys      []K
+	result    map[K]T
+	err       error
 }
 
 type multiGetFillerConfig struct {
@@ -160,7 +161,8 @@ func NewMultiGetFiller[T any, K comparable](
 		s.keys = append(s.keys, key)
 
 		return func() (T, error) {
-			if state != nil {
+			if !s.completed {
+				s.completed = true
 				state = nil
 
 				values, err := multiGetFunc(ctx, s.keys)
