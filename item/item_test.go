@@ -1237,6 +1237,62 @@ func TestMultiGetFiller(t *testing.T) {
 			{user1.GetKey(), user2.GetKey()},
 		}, calledKeys)
 	})
+
+	t.Run("interleaving", func(t *testing.T) {
+		user1 := userValue{
+			Tenant: "TENANT01",
+			Name:   "user01",
+			Age:    31,
+		}
+		user2 := userValue{
+			Tenant: "TENANT01",
+			Name:   "user02",
+			Age:    32,
+		}
+		user3 := userValue{
+			Tenant: "TENANT02",
+			Name:   "user03",
+			Age:    33,
+		}
+
+		var calledKeys [][]userKey
+		values := [][]userValue{
+			{user1, user2},
+			{user3},
+		}
+
+		filler := NewMultiGetFiller[userValue, userKey](
+			func(ctx context.Context, keys []userKey) ([]userValue, error) {
+				index := len(calledKeys)
+				calledKeys = append(calledKeys, keys)
+				return values[index], nil
+			},
+			userValue.GetKey,
+		)
+
+		fn1 := filler(newContext(), user1.GetKey())
+		fn2 := filler(newContext(), user2.GetKey())
+
+		resp1, err := fn1()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user1, resp1)
+
+		fn3 := filler(newContext(), user3.GetKey())
+
+		resp2, err := fn2()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user2, resp2)
+
+		// Get Stage 2
+		resp3, err := fn3()
+		assert.Equal(t, nil, err)
+		assert.Equal(t, user3, resp3)
+
+		assert.Equal(t, [][]userKey{
+			{user1.GetKey(), user2.GetKey()},
+			{user3.GetKey()},
+		}, calledKeys)
+	})
 }
 
 func TestItem_WithFakePipeline(t *testing.T) {
