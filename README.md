@@ -13,7 +13,7 @@ This library helps to utilize memcached in a consistent and efficient way.
 * Prevent thundering herd (a.k.a Cache Stampede).
 * Efficient batching get to the underlining database, batching between lease gets
   and between retries for preventing thundering-herd.
-* Memcached replication similar to MCRouter, without the need for external proxies.
+* Memcached replication similar to MCRouter, without the need for an external proxy.
 * Memory-weighted load-balancing for replication.
 
 ## Table of Contents
