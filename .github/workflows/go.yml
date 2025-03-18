@@ -9,11 +9,11 @@ jobs:
     runs-on: ubuntu-20.04
     services:
       memcached:
-        image: memcached:1.6.19
+        image: memcached:1.6.37
         ports:
           - 11211:11211
       memcached2:
-        image: memcached:1.6.19
+        image: memcached:1.6.37
         ports:
           - 11212:11211
     steps:
