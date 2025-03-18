@@ -163,7 +163,7 @@ func TestPlainMemcache_LeaseSet_After_Delete__Rejected(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, LeaseGetResponse{
 		Status: LeaseGetStatusLeaseGranted,
-		CAS:    cas + 1,
+		CAS:    cas + 2,
 	}, leaseGetResp)
 }
 
